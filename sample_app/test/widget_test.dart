@@ -6,12 +6,12 @@ import 'package:sample_app/demo/memory_leak_page.dart';
 import 'package:sample_app/main.dart';
 
 void main() {
-  testWidgets('ホームに 3 つのデモへの導線が出る', (WidgetTester tester) async {
+  testWidgets('ホームにジャンクデモへの導線が出る', (WidgetTester tester) async {
     await tester.pumpWidget(const ProfilingDemoApp());
 
     expect(find.text('スクロールのジャンク'), findsOneWidget);
-    expect(find.text('操作が固まる'), findsOneWidget);
-    expect(find.text('閉じたのに減らない'), findsOneWidget);
+    expect(find.text('操作が固まる'), findsNothing);
+    expect(find.text('閉じたのに減らない'), findsNothing);
     expect(find.text('通信が遅い？'), findsNothing);
   });
 
@@ -45,6 +45,25 @@ void main() {
     await tester.tap(find.byType(FilledButton));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump();
+
+    expect(find.textContaining('結果 '), findsOneWidget);
+  });
+
+  testWidgets('重い処理デモの Isolate.run は State を送らず完了する', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: HeavyWorkPage(records: 2000)),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byType(Switch));
+    await tester.pump();
+
+    await tester.tap(find.byType(FilledButton));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.pump();
 
     expect(find.textContaining('結果 '), findsOneWidget);

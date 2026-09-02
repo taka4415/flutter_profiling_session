@@ -1592,7 +1592,7 @@ is available at:
 </section>
 
 <section class="slide" data-sec="s5" data-title="デモ：sample_app" data-accent="ok"
-  data-notes="ここから実演。sample_app を profile モードで起動しておく。画面右上のスイッチひとつで問題版と改善版が切り替わるので、DevTools を開いたまま A/B できる。まず OFF でスクロールして赤を出し、Frame Analysis を読む。More debugging options は debug 専用なので、切り分けを見せるならここで --debug に切り替える（時間がなければ口頭で触れるだけでよい）。最後に profile に戻し、スイッチ ON で赤が消えるのを見せる。時間があれば②の画面も。">
+  data-notes="ここから実演。sample_app を profile モードで起動しておく。画面右上のスイッチひとつで問題版と改善版が切り替わるので、DevTools を開いたまま A/B できる。まず OFF でスクロールして赤を出し、Frame Analysis を読む。More debugging options は debug 専用なので、切り分けを見せるならここで --debug に切り替える（時間がなければ口頭で触れるだけでよい）。最後に profile に戻し、スイッチ ON で赤が消えるのを見せる。sample_app に操作が固まるデモは出していない。">
   <div class="eyebrow"><b>05</b><span>ツールの使い方</span></div>
   <h1>やってみる</h1>
   <div class="body">
@@ -1605,9 +1605,7 @@ flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
           <table>
             <thead><tr><th style="width:30%">デモ</th><th>どこに出るか</th></tr></thead>
             <tbody>
-              <tr><td><strong>① スクロールのジャンク</strong></td><td><span class="chip raster"><span class="swatch"></span>Raster</span> — <code>Opacity</code> / <code>saveLayer</code> / blur / 影</td></tr>
-              <tr><td><strong>② 操作が固まる</strong></td><td><span class="chip ui"><span class="swatch"></span>UI</span> — 重い同期処理でフレームが 1 枚も描けない</td></tr>
-              <tr><td><strong>③ 閉じたのに減らない</strong></td><td><span class="chip jank"><span class="swatch"></span>Memory</span> — <code>cancel()</code> し忘れ。<strong>Memory ▸ Diff</strong> で見る<span class="dim">（+α）</span></td></tr>
+              <tr><td><strong>スクロールのジャンク</strong></td><td><span class="chip raster"><span class="swatch"></span>Raster</span> — <code>Opacity</code> / <code>saveLayer</code> / blur / 影</td></tr>
             </tbody>
           </table>
         </div>
@@ -1622,9 +1620,6 @@ flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
           <li>アプリのスイッチを <strong>ON</strong> にして、同じ操作をもう一度</li>
           <li>赤が消えたことを確認する</li>
         </ol>
-        <div class="note good">
-          <p class="sm"><strong>②の見どころ</strong><br>画面中央の「描けたフレーム数」が、ボタンを押した瞬間に<em>止まります</em>。<code>Isolate.run()</code> に切り替えると止まらなくなります。</p>
-        </div>
         <p class="sm dim">端末が速すぎて赤が出ないときは、<code>kTrackCount</code> と <code>kWorkIterations</code>（<code>lib/demo/janky_list_page.dart</code>）を増やしてください。</p>
       </div>
     </div>
@@ -1979,7 +1974,7 @@ flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
 </section>
 
 <section class="slide" data-sec="bonus" data-title="Memory — 減らないものを見つける" data-accent="raster"
-  data-notes="時間ではなくメモリの話。DevTools の Memory ▸ Diff が実務では一番使える。開く前・開いて閉じたあとの 2 枚を撮って差分を見る。増えたままのクラスが出たら、そのクラスの参照を誰かが持ち続けている。sample_app のデモ③をその場で回すと速い。スナップショットを撮ると GC も走るので、撮ってから比べること。">
+  data-notes="時間ではなくメモリの話。DevTools の Memory ▸ Diff が実務では一番使える。開く前・開いて閉じたあとの 2 枚を撮って差分を見る。増えたままのクラスが出たら、そのクラスの参照を誰かが持ち続けている。sample_app にメモリデモは無いので、口頭と自分のアプリの Memory タブで十分。スナップショットを撮ると GC も走るので、撮ってから比べること。">
   <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
   <h1>Memory — 「閉じたのに減らない」を見つける</h1>
   <div class="body">
@@ -2006,7 +2001,7 @@ flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
           <li>コールバックの中で <code>context</code> や State を掴んでいる</li>
         </ul>
         <div class="note good">
-          <p class="sm"><strong><code>sample_app</code> のデモ ③ で試せます</strong><br>詳細画面を開くたびに 2MB を確保し、グローバルな <code>StreamController</code> を購読したまま <code>cancel()</code> し忘れます。「開いて閉じるを 10 回」を押して Diff を見ると、<code>DetailPayload</code> が 10 個（約 20MB）増えたまま戻りません。</p>
+          <p class="sm"><strong>自分のアプリで試す</strong><br>疑わしい画面を開く前と、開いて閉じたあとにスナップショットを撮って Diff します。増えたままのクラスがあれば、誰かが掴んだままです。</p>
         </div>
         <p class="sm dim">テストの中で <code>dispose</code> 漏れを自動検出する <strong>leak_tracker</strong> という仕組みもあります。まずは Diff で「増えているか」を見るのが手軽です。</p>
       </div>
@@ -2046,7 +2041,7 @@ flutter build ipa <span class="s">--analyze-size</span></code></pre>
 </section>
 
 <section class="slide" data-sec="bonus" data-title="自分で計測点を打つ" data-accent="raster"
-  data-notes="DevTools が出してくれる情報で足りないときは、自分で名前を付けて計測する。sample_app の heavy_work_page に実際に入れてあるので、Timeline Events に aggregate という帯が出るのを見せられる。非同期区間は TimelineTask を使うのがポイント。">
+  data-notes="DevTools が出してくれる情報で足りないときは、自分で名前を付けて計測する。スライドのコードを見せて、Timeline Events に名前付きの帯が出る、と説明する。非同期区間は TimelineTask を使うのがポイント。sample_app に操作が固まるデモは出していない。">
   <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
   <h1>自分のコードに、名前を付けて測る</h1>
   <div class="body">
@@ -2070,7 +2065,7 @@ task.finish();</code></pre>
         <h2>どこに出るのか</h2>
         <p class="sm">DevTools ▸ Performance ▸ <strong>Timeline Events</strong> に、付けた名前の帯がそのまま出ます。横幅がかかった時間です。</p>
         <div class="note good">
-          <p class="sm"><code>sample_app</code> の <code>lib/demo/heavy_work_page.dart</code> に実際に入れてあります。「集計する」を押したあと Timeline Events を見ると、<code>aggregate (main isolate)</code> という帯が見えます。</p>
+          <p class="sm">同期は <code>Timeline.startSync</code>、非同期（<code>Isolate.run</code> など）は <code>TimelineTask</code> です。start と finish が別フレームになるときは Task 側を使います。</p>
         </div>
         <div class="note bad">
           <p class="sm"><strong>打ちすぎ注意。</strong>1 フレームに何百個も打つと、記録すること自体が重くなって数字が狂います。知りたい区間にだけ、粗く打ちます。</p>

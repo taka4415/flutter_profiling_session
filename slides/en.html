@@ -1607,7 +1607,6 @@ flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
             <tbody>
               <tr><td><strong>① Scroll jank</strong></td><td><span class="chip raster"><span class="swatch"></span>Raster</span> — <code>Opacity</code> / <code>saveLayer</code> / blur / shadows</td></tr>
               <tr><td><strong>② The UI freezes</strong></td><td><span class="chip ui"><span class="swatch"></span>UI</span> — heavy sync work, not even one frame can paint</td></tr>
-              <tr><td><strong>③ Closed, but it never shrinks</strong></td><td><span class="chip jank"><span class="swatch"></span>Memory</span> — forgot <code>cancel()</code>. See it in <strong>Memory ▸ Diff</strong> <span class="dim">(Extra)</span></td></tr>
             </tbody>
           </table>
         </div>
@@ -1623,7 +1622,7 @@ flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
           <li>Confirm the red is gone</li>
         </ol>
         <div class="note good">
-          <p class="sm"><strong>What to watch in ②</strong><br>The “frames painted” counter in the middle <em>stops</em> the moment you tap. Switch to <code>Isolate.run()</code> and it keeps going.</p>
+          <p class="sm"><strong>What to watch in ②</strong><br>The square and “frames painted” counter in the middle <em>stop</em> the moment you tap. Even if you blink, “longest gap” keeps the freeze in milliseconds. Switch to <code>Isolate.run()</code> and it keeps going.</p>
         </div>
         <p class="sm dim">If the device is too fast to show red, raise <code>kTrackCount</code> and <code>kWorkIterations</code> in <code>lib/demo/janky_list_page.dart</code>.</p>
       </div>
@@ -1979,7 +1978,7 @@ flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
 </section>
 
 <section class="slide" data-sec="bonus" data-title="Memory — find what never shrinks" data-accent="raster"
-  data-notes="Memory, not time. Memory ▸ Diff is the most useful bit in practice. Snapshot before open, then after open-and-close, and diff. A class that stays grown means someone still holds it. Demo ③ in sample_app is fast live. Taking a snapshot also GCs — compare after you snap.">
+  data-notes="Memory, not time. Memory ▸ Diff is the most useful bit in practice. Snapshot before open, then after open-and-close, and diff. A class that stays grown means someone still holds it. sample_app has no memory demo — talk plus their Memory tab is enough. Taking a snapshot also GCs — compare after you snap.">
   <div class="eyebrow"><b>Extra</b><span>If you have time</span></div>
   <h1>Memory — find “I closed it, it never shrinks”</h1>
   <div class="body">
@@ -2006,7 +2005,7 @@ flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
           <li>A callback holding <code>context</code> or a State</li>
         </ul>
         <div class="note good">
-          <p class="sm"><strong>Try it in <code>sample_app</code> demo ③</strong><br>Each detail screen allocates 2MB and subscribes to a global <code>StreamController</code> without <code>cancel()</code>. Hit “open and close 10 times,” then Diff: ten <code>DetailPayload</code>s (~20MB) stay and never come back.</p>
+          <p class="sm"><strong>Try it in your own app</strong><br>Snapshot before opening the suspect screen, then again after open-and-close, and Diff. A class that stays grown means someone is still holding it.</p>
         </div>
         <p class="sm dim">There’s also <strong>leak_tracker</strong>, which can catch missed <code>dispose</code>s in tests. Easiest first step: Diff, and ask “did it grow?”</p>
       </div>

@@ -6,9 +6,7 @@ DevTools を開いたまま A/B して、数字が変わるところを見せら
 
 | デモ | 見るもの | DevTools |
 |---|---|---|
-| ① スクロールのジャンク | Raster スレッド | Performance |
-| ② 操作が固まる | UI スレッド | Performance |
-| ③ 閉じたのに減らない | メモリ | Memory |
+| スクロールのジャンク | Raster スレッド | Performance |
 
 ## 動かし方
 
@@ -49,47 +47,6 @@ flutter run --profile -d <device-id>
 5. アプリ側のスイッチを ON にして、同じようにスクロールし直す
 6. 赤が消えることを確認する
 
-## デモ ②「操作が固まる」
-
-**UI スレッド**が完全にブロックされる例です。画面中央のフレームカウンタと
-インジケータが回りっぱなしなので、止まった瞬間が目で見えます。
-
-- OFF: 重い集計を UI スレッドで実行 → カウンタが数百 ms 止まる
-- ON: `Isolate.run()` に逃がす → カウンタは止まらない
-
-`Timeline.startSync()` / `TimelineTask` で囲んであるので、
-DevTools の Timeline Events に `aggregate (main isolate)` /
-`aggregate (Isolate.run)` という名前の帯が出ます。
-
-## デモ ③「閉じたのに減らない」
-
-**メモリ**が返ってこない例です。時間ではなくメモリの話なので、見るのは
-Performance ではなく **Memory** ビューです。
-
-詳細画面を開くたびに 2MB の `DetailPayload` を確保し、同時に
-アプリ全体で生きている `appEventBus`（グローバルな `StreamController`）を購読します。
-
-- OFF: `dispose()` で `cancel()` しない → StreamController が購読 → コールバック →
-  State → 2MB、という鎖でつながったままになり、**画面を閉じても回収されない**
-- ON: `dispose()` で `cancel()` する → 閉じたぶんは回収される
-
-**当日の流れ**
-
-1. DevTools → Memory を開く
-2. **Snapshot** を 1 枚撮る（撮ると GC も走る）
-3. アプリの「開いて閉じるを 10 回」ボタンを押す
-4. もう 1 枚 Snapshot を撮る
-5. **Diff** タブで 2 枚を比べ、`DetailPayload` を探す
-   - OFF なら 10 個（約 20MB）増えたまま。ON なら増えない
-6. スイッチを ON にして、同じ回数やり直す
-
-画面には「作った数 / 回収された数 / 残っている数」も出しています。
-回収された数は GC が走ったあとに動くので、Snapshot を撮ると数字が追いつきます。
-ただし目安なので、ほんとうの答えは Diff で見てください。
-
-> いちど漏らしたぶんはアプリを再起動するまで残ります。
-> 前後比較をするなら、スイッチを切り替えたあとに再起動するのがきれいです。
-
 ## 端末に合わせた調整
 
 端末が速すぎてジャンクが出ない / 遅すぎて操作できないときは、
@@ -99,9 +56,6 @@ Performance ではなく **Memory** ビューです。
 |---|---|---|
 | `kTrackCount` | `lib/demo/janky_list_page.dart` | リストの件数（既定 500） |
 | `kWorkIterations` | `lib/demo/janky_list_page.dart` | 1 行あたりの計算量（既定 6000 ＝ M 系 Mac で約 0.6ms／行） |
-| `kRecordCount` | `lib/demo/heavy_work_page.dart` | 集計件数（既定 40000000 ＝ M 系 Mac で約 270ms） |
-| `kPayloadBytes` | `lib/demo/memory_leak_page.dart` | 詳細画面 1 枚が抱える大きさ（既定 2MB） |
-| `kCycleCount` | `lib/demo/memory_leak_page.dart` | 自動で開いて閉じる回数（既定 10） |
 
 ## 確認
 
