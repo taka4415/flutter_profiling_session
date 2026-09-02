@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'demo/heavy_work_page.dart';
 import 'demo/janky_list_page.dart';
 import 'demo/memory_leak_page.dart';
-import 'demo/slow_network_page.dart';
 
 void main() {
   runApp(const ProfilingDemoApp());
@@ -59,8 +58,7 @@ class DemoHomePage extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '①② は Performance、③ は Memory、④ は Network と Performance を'
-            '並べて見てください。',
+            '①② は Performance、③ は Memory を見てください。',
             style: theme.textTheme.bodyMedium
                 ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
@@ -109,22 +107,6 @@ class DemoHomePage extends StatelessWidget {
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (BuildContext context) => const MemoryLeakPage(),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          _DemoCard(
-            index: '04',
-            title: '通信が遅い？',
-            subtitle: '待ちとカクつきを切り分ける例',
-            bullets: const <String>[
-              '端末内の HTTP サーバーがわざと遅く応答する',
-              '待っているあいだフレームカウンタは回り続ける',
-              '返った直後の jsonDecode で UI が止まる（スイッチで Isolate.run）',
-            ],
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (BuildContext context) => const SlowNetworkPage(),
               ),
             ),
           ),

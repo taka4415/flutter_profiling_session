@@ -3,23 +3,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sample_app/demo/heavy_work_page.dart';
 import 'package:sample_app/demo/janky_list_page.dart';
 import 'package:sample_app/demo/memory_leak_page.dart';
-import 'package:sample_app/demo/slow_network_page.dart';
 import 'package:sample_app/main.dart';
 
 void main() {
-  testWidgets('ホームに 4 つのデモへの導線が出る', (WidgetTester tester) async {
+  testWidgets('ホームに 3 つのデモへの導線が出る', (WidgetTester tester) async {
     await tester.pumpWidget(const ProfilingDemoApp());
 
     expect(find.text('スクロールのジャンク'), findsOneWidget);
     expect(find.text('操作が固まる'), findsOneWidget);
     expect(find.text('閉じたのに減らない'), findsOneWidget);
-
-    await tester.scrollUntilVisible(
-      find.text('通信が遅い？'),
-      300,
-      scrollable: find.byType(Scrollable),
-    );
-    expect(find.text('通信が遅い？'), findsOneWidget);
+    expect(find.text('通信が遅い？'), findsNothing);
   });
 
   testWidgets('リストデモの最適化トグルで表示が切り替わる', (WidgetTester tester) async {
@@ -110,47 +103,5 @@ void main() {
     final FilledButton button = tester.widget<FilledButton>(cycleButton);
     expect(button.onPressed, isNotNull);
     expect(find.text('$kCycleCount'), findsWidgets);
-  });
-
-  testWidgets('通信デモは待ちとパースの時間を分けて表示する', (WidgetTester tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: SlowNetworkPage(delayMs: 20, itemCount: 40, useHttp: false),
-      ),
-    );
-    await tester.pump();
-    await tester.pump();
-
-    final Finder loadButton = find.widgetWithText(FilledButton, '読み込む');
-    expect(tester.widget<FilledButton>(loadButton).onPressed, isNotNull);
-
-    await tester.tap(loadButton);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 40));
-    await tester.pump(const Duration(milliseconds: 40));
-    await tester.pump();
-
-    expect(find.textContaining('通信 '), findsOneWidget);
-    expect(find.textContaining('パース '), findsOneWidget);
-    expect(find.textContaining('40 件'), findsOneWidget);
-  });
-
-  testWidgets('通信デモの最適化トグルで表示が切り替わる', (WidgetTester tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: SlowNetworkPage(delayMs: 0, itemCount: 8, useHttp: false),
-      ),
-    );
-    await tester.pump();
-    await tester.pump();
-
-    expect(find.text('UI でパース'), findsOneWidget);
-    expect(find.text('Isolate.run'), findsNothing);
-
-    await tester.tap(find.byType(Switch));
-    await tester.pump();
-
-    expect(find.text('Isolate.run'), findsOneWidget);
-    expect(find.text('UI でパース'), findsNothing);
   });
 }

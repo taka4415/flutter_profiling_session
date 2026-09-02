@@ -9,7 +9,6 @@ DevTools を開いたまま A/B して、数字が変わるところを見せら
 | ① スクロールのジャンク | Raster スレッド | Performance |
 | ② 操作が固まる | UI スレッド | Performance |
 | ③ 閉じたのに減らない | メモリ | Memory |
-| ④ 通信が遅い？ | 待ち vs カクつき | Network + Performance |
 
 ## 動かし方
 
@@ -91,34 +90,6 @@ Performance ではなく **Memory** ビューです。
 > いちど漏らしたぶんはアプリを再起動するまで残ります。
 > 前後比較をするなら、スイッチを切り替えたあとに再起動するのがきれいです。
 
-## デモ ④「通信が遅い？」
-
-**待ち（通信）とカクつき（パース）** をごっちゃにしないための例です。
-外の回線は使いません。端末の中で HTTP サーバーを立ち上げ、わざと遅く応答します。
-DevTools の **Network** に `http://127.0.0.1:.../catalog` が出ます。
-
-画面中央のフレームカウンタとインジケータが回りっぱなしなので、
-「待っているあいだ」と「返ってきたあと」で挙動が違うのが目で見えます。
-
-| | 最適化 OFF | 最適化 ON |
-|---|---|---|
-| 通信中 | カウンタは回り続ける（Overlay は緑） | 同じ |
-| 返ってきた直後 | `jsonDecode` を UI スレッドで実行 → カウンタが止まる | `Isolate.run()` へ → 止まらない |
-
-通信の遅延はチップで `0 ms` / `800 ms` / `2000 ms` に切り替えられます。
-`0 ms` にしてもカクつくなら、通信は無関係です。
-
-**当日の流れ**
-
-1. DevTools の **Network** と **Performance** を並べて開く
-2. 遅延 800 ms、スイッチ OFF で「読み込む」
-3. 通信中はフレームカウンタが回り、Network に 1 本出る
-4. 返った直後だけカウンタが止まり、Timeline に `jsonDecode (main isolate)` が出る
-5. 遅延を `0 ms` にしてやり直す → まだ止まる（通信を消しても残る）
-6. スイッチを ON にして同じ操作 → 止まらなくなる
-
-結果行の「通信 ○○ ms / パース ○○ ms」が、切り分けの答えです。
-
 ## 端末に合わせた調整
 
 端末が速すぎてジャンクが出ない / 遅すぎて操作できないときは、
@@ -131,8 +102,6 @@ DevTools の **Network** に `http://127.0.0.1:.../catalog` が出ます。
 | `kRecordCount` | `lib/demo/heavy_work_page.dart` | 集計件数（既定 40000000 ＝ M 系 Mac で約 270ms） |
 | `kPayloadBytes` | `lib/demo/memory_leak_page.dart` | 詳細画面 1 枚が抱える大きさ（既定 2MB） |
 | `kCycleCount` | `lib/demo/memory_leak_page.dart` | 自動で開いて閉じる回数（既定 10） |
-| `kNetworkDelayMs` | `lib/demo/slow_network_page.dart` | 通信の待ち（既定 800ms。画面のチップでも変えられる） |
-| `kJsonItemCount` | `lib/demo/slow_network_page.dart` | 返す JSON の件数（既定 120000。パースが速すぎるときは増やす） |
 
 ## 確認
 
