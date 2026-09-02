@@ -1,0 +1,2666 @@
+<title>はじめての Flutter Profiling</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+/* ============================================================
+   Tokens — light is the complete set; dark redefines tokens only.
+   ============================================================ */
+:root {
+  color-scheme: light;
+  --paper:     #F3F5F8;
+  --surface:   #FFFFFF;
+  --surface-2: #E9EDF3;
+  --ink:       #0F1826;
+  --ink-2:     #4C5A72;
+  --muted:     #7C899D;
+  --line:      #D3DBE6;
+  --line-2:    #B4C0D0;
+  --ui:        #2A78D6;   /* UI thread / primary accent */
+  --raster:    #EB6834;   /* Raster thread / secondary accent */
+  --jank:      #D03B3B;   /* status: critical */
+  --ok:        #0CA30C;   /* status: good */
+  --ui-wash:     rgba(42,120,214,.10);
+  --raster-wash: rgba(235,104,52,.11);
+  --jank-wash:   rgba(208,59,59,.10);
+  --ok-wash:     rgba(12,163,12,.10);
+  --code-bg:   #0D1626;
+  --code-ink:  #D9E4F3;
+  --code-dim:  #7E92AE;
+  --shadow:    0 1px 2px rgba(15,24,38,.05), 0 10px 30px rgba(15,24,38,.08);
+
+  --font-display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+  --font-body:    "Noto Sans JP", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper:     #0B1220;
+    --surface:   #131C2C;
+    --surface-2: #1B2536;
+    --ink:       #E7ECF4;
+    --ink-2:     #AEBACB;
+    --muted:     #7E8CA3;
+    --line:      #26313F;
+    --line-2:    #384558;
+    --ui:        #3987E5;
+    --raster:    #D95926;
+    --jank:      #EE6A64;
+    --ok:        #35C06A;
+    --ui-wash:     rgba(57,135,229,.16);
+    --raster-wash: rgba(217,89,38,.18);
+    --jank-wash:   rgba(238,106,100,.15);
+    --ok-wash:     rgba(53,192,106,.14);
+    --code-bg:   #060C17;
+    --code-ink:  #D9E4F3;
+    --code-dim:  #6E819C;
+    --shadow:    0 1px 2px rgba(0,0,0,.45), 0 10px 30px rgba(0,0,0,.40);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper:     #0B1220;
+  --surface:   #131C2C;
+  --surface-2: #1B2536;
+  --ink:       #E7ECF4;
+  --ink-2:     #AEBACB;
+  --muted:     #7E8CA3;
+  --line:      #26313F;
+  --line-2:    #384558;
+  --ui:        #3987E5;
+  --raster:    #D95926;
+  --jank:      #EE6A64;
+  --ok:        #35C06A;
+  --ui-wash:     rgba(57,135,229,.16);
+  --raster-wash: rgba(217,89,38,.18);
+  --jank-wash:   rgba(238,106,100,.15);
+  --ok-wash:     rgba(53,192,106,.14);
+  --code-bg:   #060C17;
+  --code-ink:  #D9E4F3;
+  --code-dim:  #6E819C;
+  --shadow:    0 1px 2px rgba(0,0,0,.45), 0 10px 30px rgba(0,0,0,.40);
+}
+
+/* ============================================================
+   Shell
+   ============================================================ */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+.deck {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+.stage {
+  position: relative;
+  width: min(100vw, calc((100dvh - 3.4rem) * 16 / 9));
+  height: min(calc(100dvh - 3.4rem), calc(100vw * 9 / 16));
+  container-type: size;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+/* ============================================================
+   Slide frame + type scale (all sizes in container units)
+   ============================================================ */
+.slide {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  padding: 4.0cqw 5.6cqw 3.6cqw 7.4cqw;
+  font-size: 1.42cqw;
+  line-height: 1.72;
+  color: var(--ink-2);
+}
+.slide.is-active { display: flex; }
+.slide::before {                       /* left accent bar = section marker */
+  content: "";
+  position: absolute;
+  left: 3.4cqw; top: 4.0cqw; bottom: 3.6cqw;
+  width: 0.28cqw;
+  background: var(--line);
+  border-radius: 1px;
+}
+.slide[data-accent="ui"]::before     { background: var(--ui); }
+.slide[data-accent="raster"]::before { background: var(--raster); }
+.slide[data-accent="jank"]::before   { background: var(--jank); }
+.slide[data-accent="ok"]::before     { background: var(--ok); }
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.94cqw;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 1.4cqw;
+  display: flex;
+  align-items: center;
+  gap: 0.9cqw;
+}
+.eyebrow b { color: var(--ui); font-weight: 700; }
+.slide[data-accent="raster"] .eyebrow b { color: var(--raster); }
+.slide[data-accent="ok"] .eyebrow b     { color: var(--ok); }
+.slide[data-accent="jank"] .eyebrow b   { color: var(--jank); }
+
+h1 {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 3.5cqw;
+  line-height: 1.24;
+  letter-spacing: .005em;
+  margin: 0 0 1.8cqw;
+  color: var(--ink);
+  text-wrap: balance;
+}
+h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.85cqw;
+  line-height: 1.4;
+  margin: 0 0 0.8cqw;
+  color: var(--ink);
+  text-wrap: balance;
+}
+h3 {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.94cqw;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 0.7cqw;
+}
+p { margin: 0 0 1cqw; max-width: 62ch; }
+.lead { font-size: 1.72cqw; line-height: 1.66; color: var(--ink); max-width: 54ch; }
+.sm   { font-size: 1.14cqw; line-height: 1.65; }
+.dim  { color: var(--muted); }
+strong { color: var(--ink); font-weight: 700; }
+em { font-style: normal; color: var(--ui); font-weight: 700; }
+
+.body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 1.6cqw; justify-content: center; }
+.cols  { display: grid; grid-template-columns: 1fr 1fr; gap: 2.6cqw; align-items: start; }
+.cols3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.8cqw; align-items: start; }
+.cols-wide { display: grid; grid-template-columns: 1.15fr 1fr; gap: 2.8cqw; align-items: start; }
+.stack { display: flex; flex-direction: column; gap: 1.1cqw; }
+.grow { flex: 1; min-height: 0; }
+.center-x { align-items: center; }
+
+/* Cards, callouts, tables ------------------------------------ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.9cqw;
+  padding: 1.5cqw 1.7cqw;
+  box-shadow: var(--shadow);
+}
+.card h2 { font-size: 1.42cqw; margin-bottom: 0.4cqw; }
+.card p:last-child { margin-bottom: 0; }
+
+.note {
+  border-left: 0.28cqw solid var(--ui);
+  background: var(--ui-wash);
+  padding: 1.1cqw 1.4cqw;
+  border-radius: 0 0.6cqw 0.6cqw 0;
+  font-size: 1.22cqw;
+}
+.note.bad  { border-color: var(--jank);   background: var(--jank-wash); }
+.note.good { border-color: var(--ok);     background: var(--ok-wash); }
+.note.warm { border-color: var(--raster); background: var(--raster-wash); }
+.note p:last-child { margin-bottom: 0; }
+.note.good em { color: var(--ok); }
+.note.bad em  { color: var(--jank); }
+.note.warm em { color: var(--raster); }
+
+ul, ol { margin: 0 0 1cqw; padding-left: 1.5cqw; }
+li { margin-bottom: 0.55cqw; }
+li::marker { color: var(--muted); }
+ul.tight li { margin-bottom: 0.25cqw; }
+ul.plain { list-style: none; padding-left: 0; }
+ul.plain li { position: relative; padding-left: 1.5cqw; }
+ul.plain li::before {
+  content: "";
+  position: absolute; left: 0.2cqw; top: 0.78cqw;
+  width: 0.42cqw; height: 0.42cqw; border-radius: 50%;
+  background: var(--line-2);
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 1.16cqw; }
+th, td { text-align: left; padding: 0.72cqw 0.9cqw; border-bottom: 1px solid var(--line); vertical-align: top; }
+thead th {
+  font-family: var(--font-mono);
+  font-size: 0.88cqw; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted); font-weight: 700;
+  border-bottom: 1px solid var(--line-2);
+}
+tbody tr:last-child td { border-bottom: none; }
+td.num, th.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.tbl-wrap { overflow-x: auto; }
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--surface-2);
+  border-radius: 0.3cqw;
+  padding: 0.08em 0.34em;
+  color: var(--ink);
+}
+pre {
+  margin: 0;
+  background: var(--code-bg);
+  color: var(--code-ink);
+  border-radius: 0.7cqw;
+  padding: 1.2cqw 1.4cqw;
+  font-family: var(--font-mono);
+  font-size: 1.06cqw;
+  line-height: 1.7;
+  overflow-x: auto;
+  border-left: 0.28cqw solid var(--ui);
+}
+pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+pre .c { color: var(--code-dim); }
+pre .k { color: #8FC3FF; }
+pre .s { color: #F2A97E; }
+
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  border: 1px solid var(--line-2);
+  border-bottom-width: 0.16cqw;
+  border-radius: 0.3cqw;
+  padding: 0.06em 0.4em;
+  background: var(--surface);
+  color: var(--ink);
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 0.4cqw;
+  font-family: var(--font-mono);
+  font-size: 0.92cqw; letter-spacing: .06em;
+  padding: 0.3cqw 0.7cqw;
+  border-radius: 10cqw;
+  border: 1px solid currentColor;
+}
+.chip.ui     { color: var(--ui); }
+.chip.raster { color: var(--raster); }
+.chip.jank   { color: var(--jank); }
+.chip.ok     { color: var(--ok); }
+.swatch { width: 0.75cqw; height: 0.75cqw; border-radius: 0.18cqw; background: currentColor; }
+
+.metric { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; color: var(--ink); }
+.big-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 3.2cqw;
+  line-height: 1;
+  color: var(--ui);
+}
+
+figure { margin: 0; }
+figcaption { font-size: 1.06cqw; color: var(--muted); margin-top: 0.7cqw; }
+svg.diagram { width: 100%; height: auto; max-width: 100%; display: block; }
+svg.diagram text { font-family: var(--font-mono); fill: currentColor; }
+</style>
+<style>
+/* ============================================================
+   Frame chart (canvas) + legend
+   ============================================================ */
+.chart {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.9cqw;
+  padding: 1.3cqw 1.5cqw 1.1cqw;
+  box-shadow: var(--shadow);
+}
+.chart-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 1cqw; margin-bottom: 0.9cqw; flex-wrap: wrap;
+}
+.chart-title { font-family: var(--font-display); font-weight: 700; font-size: 1.3cqw; color: var(--ink); }
+.legend { display: flex; gap: 1.1cqw; align-items: center; flex-wrap: wrap; }
+.legend .chip { border: none; padding: 0; }
+canvas.framechart { display: block; width: 100%; height: 100%; }
+.chart-canvas-wrap { position: relative; width: 100%; height: 15.5cqw; }
+.chart.compact .chart-canvas-wrap { height: 9cqw; }
+.chart-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1cqw; margin-top: 0.8cqw; font-size: 1.02cqw; color: var(--muted);
+}
+.readout { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.readout b { color: var(--jank); }
+
+button.act {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 1.05cqw;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  border-radius: 0.5cqw;
+  padding: 0.5cqw 1cqw;
+  cursor: pointer;
+}
+button.act:hover { border-color: var(--ui); color: var(--ui); }
+button.act[aria-pressed="true"] { background: var(--jank); border-color: var(--jank); color: #fff; }
+
+/* ============================================================
+   Cover
+   ============================================================ */
+.cover { justify-content: center; padding-left: 7.4cqw; }
+.cover h1 { font-size: 5.4cqw; margin-bottom: 1.2cqw; }
+.cover .sub { font-size: 2cqw; color: var(--ink-2); font-family: var(--font-display); font-weight: 700; margin-bottom: 2.6cqw; }
+.goals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.4cqw; margin-bottom: 2.2cqw; }
+.goal { border-top: 0.22cqw solid var(--ui); padding-top: 0.9cqw; }
+.goal:nth-child(2) { border-color: var(--raster); }
+.goal:nth-child(3) { border-color: var(--ok); }
+.goal .n { font-family: var(--font-mono); font-size: 0.9cqw; letter-spacing: .14em; color: var(--muted); }
+.goal .t { font-family: var(--font-display); font-weight: 700; font-size: 1.35cqw; color: var(--ink); line-height: 1.45; }
+.colophon { font-family: var(--font-mono); font-size: 1cqw; color: var(--muted); letter-spacing: .04em; }
+
+/* ============================================================
+   Quiz
+   ============================================================ */
+.quiz-q { font-family: var(--font-display); font-weight: 700; font-size: 2.1cqw; color: var(--ink); line-height: 1.45; margin-bottom: 1.6cqw; text-wrap: balance; }
+.opts { display: grid; gap: 0.8cqw; }
+.opt {
+  display: flex; align-items: flex-start; gap: 1cqw;
+  text-align: left; width: 100%;
+  font-family: var(--font-body); font-size: 1.3cqw; line-height: 1.55;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.7cqw;
+  padding: 1cqw 1.3cqw;
+  cursor: pointer;
+}
+.opt:hover:not([data-state]) { border-color: var(--ui); }
+.opt .mark {
+  flex: none;
+  font-family: var(--font-mono); font-weight: 700; font-size: 1.05cqw;
+  width: 1.9cqw; height: 1.9cqw; border-radius: 50%;
+  display: grid; place-items: center;
+  border: 1px solid var(--line-2); color: var(--muted);
+}
+.opt[data-state="correct"]   { border-color: var(--ok);   background: var(--ok-wash); }
+.opt[data-state="correct"] .mark { border-color: var(--ok); color: var(--ok); }
+.opt[data-state="wrong"]     { border-color: var(--jank); background: var(--jank-wash); }
+.opt[data-state="wrong"] .mark   { border-color: var(--jank); color: var(--jank); }
+.opt[data-state="dim"]       { opacity: .5; }
+.answer { display: none; }
+.answer.is-open { display: block; }
+
+/* ============================================================
+   HUD
+   ============================================================ */
+.hud {
+  width: min(100vw, calc((100dvh - 3.4rem) * 16 / 9));
+  height: 3.4rem;
+  flex: none;
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0 1rem;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+  font-size: 0.72rem;
+}
+.hud-section {
+  font-family: var(--font-mono);
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  min-width: 12rem;
+}
+.hud-section b { color: var(--ui); }
+.ticks { flex: 1; display: flex; align-items: flex-end; gap: 2px; height: 1.4rem; min-width: 0; }
+.tick {
+  flex: 1 1 0; min-width: 1px;
+  height: 40%;
+  background: var(--line-2);
+  border: none; padding: 0;
+  border-radius: 1px;
+  cursor: pointer;
+  transition: height .12s ease, background .12s ease;
+}
+.tick[data-sec="bonus"] { background: var(--line); }
+.tick.seen { background: var(--ui); opacity: .38; }
+.tick.seen[data-sec="bonus"] { background: var(--raster); opacity: .32; }
+.tick.now { height: 100%; background: var(--ui); opacity: 1; }
+.tick.now[data-sec="bonus"] { background: var(--raster); }
+.tick.boundary { margin-left: 7px; }
+.tick:focus-visible { outline: 2px solid var(--ui); outline-offset: 2px; }
+.hud-right { display: flex; align-items: center; gap: .55rem; white-space: nowrap; }
+.counter { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 700; }
+.hud button {
+  font-family: var(--font-mono); font-size: .68rem; letter-spacing: .06em;
+  color: var(--muted); background: transparent;
+  border: 1px solid var(--line); border-radius: 4px;
+  padding: .3rem .5rem; cursor: pointer;
+}
+.hud button:hover { color: var(--ui); border-color: var(--ui); }
+.hud button[aria-pressed="true"] { color: var(--ui); border-color: var(--ui); background: var(--ui-wash); }
+
+/* ============================================================
+   Overlays: notes / navigator / help
+   ============================================================ */
+.notes {
+  position: fixed; left: 0; right: 0; bottom: 3.4rem;
+  max-height: 34vh; overflow-y: auto;
+  background: var(--surface); border-top: 2px solid var(--ui);
+  padding: 1rem 1.4rem; display: none;
+  box-shadow: 0 -10px 30px rgba(0,0,0,.14);
+  z-index: 40;
+}
+.notes.is-open { display: block; }
+.notes h4 {
+  margin: 0 0 .5rem; font-family: var(--font-mono);
+  font-size: .68rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
+}
+.notes p { font-size: .92rem; line-height: 1.75; color: var(--ink-2); max-width: 90ch; margin: 0 0 .5rem; }
+
+.sheet {
+  position: fixed; inset: 0; z-index: 60;
+  background: var(--paper);
+  display: none; flex-direction: column;
+  padding: 1.6rem 2rem 2rem;
+  overflow-y: auto;
+}
+.sheet.is-open { display: flex; }
+.sheet h3 { font-size: .72rem; }
+.nav-group { margin-bottom: 1.4rem; }
+.nav-group-title {
+  font-family: var(--font-mono); font-size: .68rem; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--muted);
+  padding-bottom: .4rem; margin-bottom: .7rem;
+  border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between;
+}
+.nav-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: .5rem; }
+.nav-item {
+  text-align: left; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line);
+  border-left: 3px solid var(--ui);
+  border-radius: 6px; padding: .55rem .7rem;
+  font-family: var(--font-body); font-size: .82rem; line-height: 1.4; color: var(--ink);
+  display: flex; gap: .6rem; align-items: baseline;
+}
+.nav-item[data-sec="bonus"] { border-left-color: var(--raster); }
+.nav-item:hover { border-color: var(--ui); background: var(--ui-wash); }
+.nav-item .n { font-family: var(--font-mono); font-size: .7rem; color: var(--muted); flex: none; }
+.nav-item.now { outline: 2px solid var(--ui); }
+.sheet-close { position: absolute; top: 1.2rem; right: 1.6rem; }
+.help-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: .6rem 2rem; max-width: 60rem; }
+.help-row { display: flex; gap: .8rem; align-items: baseline; font-size: .88rem; color: var(--ink-2); padding: .3rem 0; border-bottom: 1px solid var(--line); }
+.help-row .k { font-family: var(--font-mono); color: var(--ink); flex: none; min-width: 6.5rem; }
+
+/* ============================================================
+   Motion & print
+   ============================================================ */
+:focus-visible { outline: 2px solid var(--ui); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+@page { size: A4 landscape; margin: 0; }
+@media print {
+  body { overflow: visible; }
+  .deck { display: block; height: auto; }
+  .hud, .notes, .sheet, .chart-foot button { display: none !important; }
+  .stage {
+    position: static;
+    width: 100%; height: auto;
+    container-type: normal;
+    overflow: visible;
+  }
+  /* 1 スライド = 1 ページ。スライド自身をコンテナにするので cqw はそのまま効く。 */
+  .slide {
+    position: relative; inset: auto;
+    display: flex !important;
+    width: 100%; aspect-ratio: 16 / 9;
+    container-type: size;
+    break-after: page; page-break-after: always;
+    break-inside: avoid;
+  }
+  .slide:last-of-type { break-after: auto; page-break-after: auto; }
+  .answer { display: block !important; }
+}
+</style>
+
+<div class="deck">
+<div class="stage" id="stage">
+
+<!-- ═══════════════ COVER ═══════════════ -->
+<section class="slide cover" data-sec="cover" data-title="表紙" data-accent="ui"
+  data-notes="つかみ：『自分のアプリが重いと言われたこと、ありますか？』から入る。今日のゴールは “profiling マスターになる” ではなく、“明日ひとりで DevTools を開いて赤いバーを見つけられる” ところまで。下のチャートは本物の DevTools の Flutter Frames チャートを模したもので、あとで実物を見せると説明しておく。">
+  <div class="eyebrow"><span>Flutter Performance</span><span>·</span><span>60 min session</span></div>
+  <h1>はじめての Profiling</h1>
+  <div class="sub">「なんか重い」を、数字で捕まえる</div>
+  <div class="goals">
+    <div class="goal">
+      <div class="n">GOAL 01</div>
+      <div class="t">「重い」を<br>数字にできる</div>
+    </div>
+    <div class="goal">
+      <div class="n">GOAL 02</div>
+      <div class="t">DevTools で<br>犯人を絞れる</div>
+    </div>
+    <div class="goal">
+      <div class="n">GOAL 03</div>
+      <div class="t">明日から自分の<br>アプリでできる</div>
+    </div>
+  </div>
+  <div class="chart compact" style="margin-bottom:1.6cqw">
+    <div class="chart-canvas-wrap"><canvas class="framechart" data-jank="0.12" aria-label="上段が Raster スレッド、下段が UI スレッドの、フレームごとの処理時間を示す 2 本の棒グラフ。16.7ms の予算線を超えたフレームは赤で示される。"></canvas></div>
+  </div>
+  <div class="colophon">Flutter 3.44 · Dart 3.12 · DevTools 2.57</div>
+</section>
+
+<!-- ═══════════════ 1. profiling とは ═══════════════ -->
+<section class="slide" data-sec="s1" data-title="profiling とは何か" data-accent="ui"
+  data-notes="定義は一度きちんと言い切る。ポイントは『読む』のではなく『動かして測る』こと。コードレビューでパフォーマンスを議論しても答えは出ない、という話をここでしておくと後半が効く。">
+  <div class="eyebrow"><b>01</b><span>profiling とは</span></div>
+  <h1>動かして、どこに時間が<br>消えているかを見る</h1>
+  <div class="body">
+    <p class="lead">profiling とは、<em>実際に動いているアプリを計測して</em>、時間とメモリがどこで使われているかを目に見える形にすることです。</p>
+    <div class="cols3">
+      <div class="card">
+        <h3>読むのではない</h3>
+        <p class="sm">コードを眺めて「ここが遅そう」と考えるのは profiling ではありません。動かして、記録を取ります。</p>
+      </div>
+      <div class="card">
+        <h3>推測を潰す道具</h3>
+        <p class="sm">「たぶんここ」を「ここだった」に変えるための道具です。当たりを付けるのではなく、確かめます。</p>
+      </div>
+      <div class="card">
+        <h3>特別な準備は要らない</h3>
+        <p class="sm">Flutter SDK に最初から DevTools が入っています。追加のライブラリもアカウントも不要です。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s1" data-title="デバッグとの違い" data-accent="ui"
+  data-notes="ここが今日いちばん腹落ちさせたい表。『ブレークポイントで止めた瞬間に消える』のところで、実際に止めても分からない経験を聞いてみるとよい。だから専用の道具＝DevTools がいる、につなげる。">
+  <div class="eyebrow"><b>01</b><span>profiling とは</span></div>
+  <h1>デバッグとは別の仕事</h1>
+  <div class="body">
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:16%"></th><th style="width:42%">バグ</th><th style="width:42%">パフォーマンス問題</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>症状</strong></td><td>動作が<strong>間違っている</strong></td><td>動作は正しい。<strong>ただ遅い</strong></td></tr>
+          <tr><td><strong>再現性</strong></td><td>条件が揃えば必ず起きる</td><td>端末・データ量・タイミングで変わる</td></tr>
+          <tr><td><strong>捕まえ方</strong></td><td>ブレークポイントで止める</td><td>止めた瞬間に消える。記録を取るしかない</td></tr>
+          <tr><td><strong>直ったか</strong></td><td>動けば分かる</td><td>測らないと分からない</td></tr>
+          <tr><td><strong>道具</strong></td><td>デバッガ</td><td><strong>プロファイラ（DevTools）</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">
+      <p>パフォーマンス問題は「実行を止めると消える」種類の問題です。だから、止めずに記録する道具が別に用意されています。</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s1" data-title="推測するな、計測せよ" data-accent="ui"
+  data-notes="有名な格言。ただ精神論で終わらせず、『なぜ人間の推測が当たらないか』を Flutter 固有の理由で説明する：2 つのスレッドがあり、遅い理由が Dart 側とは限らないから。右の実話は自分の失敗談として話すと刺さる。">
+  <div class="eyebrow"><b>01</b><span>profiling とは</span></div>
+  <h1>推測するな、計測せよ</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <h2>なぜ勘が当たらないのか</h2>
+        <ul class="plain">
+          <li>Flutter の 1 フレームは <strong>2 つのスレッド</strong>に分かれて動く。遅い原因が Dart のコードとは限らない</li>
+          <li>同じコードでも、端末・画面サイズ・データ量で結果が変わる</li>
+          <li>「重そうな見た目のコード」と「実際に時間を食っているコード」は一致しない</li>
+        </ul>
+      </div>
+      <div class="stack">
+        <div class="note bad">
+          <p><strong>よくある空振り</strong></p>
+          <p class="sm">一覧が重い → とりあえず <code>const</code> を付けて回り、<code>ListView.builder</code> に直した。3 時間かけて、体感は変わらなかった。</p>
+        </div>
+        <div class="note good">
+          <p><strong>測ってから直す</strong></p>
+          <p class="sm">DevTools で見たら Raster 側が真っ赤。犯人は行ごとの <code>BackdropFilter</code> だった。1 行消して解決。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s1" data-title="何を測るのか — 3つの軸" data-accent="ui"
+  data-notes="今日は 1 番だけをやる、と宣言しておく。2 と 3 は +α に用意してある。『まず時間から』の理由は、ユーザーが最初に不満を言うのがカクつきだから。">
+  <div class="eyebrow"><b>01</b><span>profiling とは</span></div>
+  <h1>測るものは 3 つある</h1>
+  <div class="body">
+    <div class="cols3">
+      <div class="card" style="border-top:0.28cqw solid var(--ui)">
+        <h3>01 — 時間</h3>
+        <h2>カクついていないか</h2>
+        <p class="sm">1 フレームを描くのにかかった時間。ユーザーが最初に不満を言うのがここ。</p>
+        <p class="sm dim">DevTools ▸ <strong>Performance</strong> / <strong>CPU Profiler</strong></p>
+        <p class="sm"><span class="chip ui"><span class="swatch"></span>今日はこれ</span></p>
+      </div>
+      <div class="card">
+        <h3>02 — メモリ</h3>
+        <h2>増え続けていないか</h2>
+        <p class="sm">画面を開いて閉じてを繰り返すと落ちる、の原因。じわじわ効いてくる。</p>
+        <p class="sm dim">DevTools ▸ <strong>Memory</strong></p>
+        <p class="sm dim">+α で扱います</p>
+      </div>
+      <div class="card">
+        <h3>03 — サイズ</h3>
+        <h2>アプリが太っていないか</h2>
+        <p class="sm">ダウンロード率とインストール後の削除率に効く。リリース前にたまに見る。</p>
+        <p class="sm dim">DevTools ▸ <strong>App Size</strong></p>
+        <p class="sm dim">+α で扱います</p>
+      </div>
+    </div>
+    <div class="note">
+      <p>3 つは別の道具で測ります。今日は<em>いちばん相談が多い「時間」</em>に絞ります。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 2. なぜやるのか ═══════════════ -->
+<section class="slide" data-sec="s2" data-title="「なんか重い」は渡せない" data-accent="jank"
+  data-notes="左右を読み上げて比べる。右が言えるようになるだけで、①他人に渡せる ②直ったと言える ③直す価値があるか判断できる、の 3 つが手に入る。“profiling は技術というより報告の仕方の話でもある” と言うと納得されやすい。">
+  <div class="eyebrow"><b>02</b><span>なぜやるのか</span></div>
+  <h1>「なんか重い」は、<br>誰にも渡せない</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="note bad">
+        <h3>計測する前</h3>
+        <p style="font-size:1.5cqw">「一覧の画面、なんか重いです」</p>
+        <ul class="tight sm plain">
+          <li>どの端末で？ どの操作で？</li>
+          <li>どのくらい重い？</li>
+          <li>直したとして、直ったとどう言う？</li>
+        </ul>
+      </div>
+      <div class="note good">
+        <h3>計測したあと</h3>
+        <p style="font-size:1.5cqw">「Pixel 6a / profile モード。一覧を 3 回フリックすると <span class="metric">42</span> フレームが 16.7ms を超え、最悪 <span class="metric">68ms</span>。<strong>Raster 側</strong>が伸びている」</p>
+        <ul class="tight sm plain">
+          <li>他の人が同じ手順で再現できる</li>
+          <li>直った / 直っていないが数字で言える</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note">
+      <p>計測の一番の効能は、速くなることではなく<em>「同じものを見て話せるようになる」</em>ことです。</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s2" data-title="ジャンクとは何か（ライブ）" data-accent="jank"
+  data-notes="ここが本編の山場。まず 60fps = 16.7ms の予算を言う。次に『重い処理を混ぜる』ボタンを押して、バーが予算線を突き抜けて赤くなるところを見せる。バーが 2 色なのは次の章で説明する、と予告して引っ張る。ボタンは押したままにせず、必ず戻して比較する。">
+  <div class="eyebrow"><b>02</b><span>なぜやるのか</span></div>
+  <h1>ジャンク＝ 1 枚のフレームが<br>予算をはみ出すこと</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="chart">
+        <div class="chart-head">
+          <div class="chart-title">2 本のグラフ（Performance Overlay の模擬）</div>
+          <div class="legend">
+            <span class="chip raster"><span class="swatch"></span>Raster</span>
+            <span class="chip ui"><span class="swatch"></span>UI</span>
+            <span class="chip jank"><span class="swatch"></span>予算超過</span>
+          </div>
+        </div>
+        <div class="chart-canvas-wrap"><canvas class="framechart" data-jank="0.05" aria-label="上段が Raster スレッド、下段が UI スレッドの、フレームごとの処理時間を示す 2 本の棒グラフ。それぞれに 16.7ms の予算線が引かれ、超えたフレームは赤で示される。"></canvas></div>
+        <div class="chart-foot">
+          <div class="readout" data-readout></div>
+          <button class="act" type="button" data-load-toggle aria-pressed="false">重い処理を混ぜる</button>
+        </div>
+      </div>
+      <div class="stack">
+        <div>
+          <div class="big-num">16.7<span style="font-size:1.4cqw"> ms</span></div>
+          <p class="sm">60fps 端末が 1 フレームに使える時間。<strong>UI と Raster の合計</strong>がこれを超えると、その 1 枚は間に合わない。</p>
+        </div>
+        <div>
+          <div class="big-num" style="color:var(--raster)">8.3<span style="font-size:1.4cqw"> ms</span></div>
+          <p class="sm">120Hz 端末の予算。最近のハイエンドはこちら。予算は<strong>半分</strong>になる。</p>
+        </div>
+        <div class="note bad">
+          <p class="sm">間に合わなかったフレームは、直前の絵がもう 1 回表示されます。これが「カクッ」の正体です。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s2" data-title="体感は最悪値で決まる" data-accent="jank"
+  data-notes="平均だけ見ていると『十分速い』と誤診する。人間はスムーズな 300 フレームを覚えず、1 回のカクつきを覚える。だから見るのは平均ではなく、超過フレーム数と worst。ここで『目標の立て方』の伏線を張る。">
+  <div class="eyebrow"><b>02</b><span>なぜやるのか</span></div>
+  <h1>平均ではなく、<br>最悪値がユーザーの記憶に残る</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="card">
+        <h3>Aさんのアプリ</h3>
+        <table>
+          <tbody>
+            <tr><td>平均</td><td class="num">8.1 ms</td></tr>
+            <tr><td>中央値</td><td class="num">7.8 ms</td></tr>
+            <tr><td>最悪</td><td class="num" style="color:var(--jank)">92 ms</td></tr>
+            <tr><td>16.7ms 超え</td><td class="num" style="color:var(--jank)">6 / 300</td></tr>
+          </tbody>
+        </table>
+        <p class="sm">平均だけ見れば優秀。しかし 6 回カクつくので、ユーザーは「重いアプリ」と言う。</p>
+      </div>
+      <div class="stack">
+        <h2>だから、見る数字はこの 3 つ</h2>
+        <ul class="plain">
+          <li><strong>16.7ms（8.3ms）を超えたフレームの数</strong> — 何回カクついたか</li>
+          <li><strong>最悪フレームの時間</strong> — どれくらい派手にカクついたか</li>
+          <li><strong>中央値</strong> — 全体的にじわっと遅いのか、たまに刺さるのか</li>
+        </ul>
+        <div class="note">
+          <p class="sm">DevTools の Flutter Frames チャートは、まさにこの「たまに刺さる 1 本」を目で見つけるための道具です。平均値はどこにも出てきません。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s2" data-title="最適化には対価がある" data-accent="jank"
+  data-notes="ここは “やらない判断” の話。最適化は必ずコード・可読性・バグ確率のコストを払う。だから『効くと分かってから払う』。計測は速くするためだけでなく、無駄な最適化をやめるための道具でもある、と締める。">
+  <div class="eyebrow"><b>02</b><span>なぜやるのか</span></div>
+  <h1>最適化は、必ず何かを支払う</h1>
+  <div class="body">
+    <div class="cols3">
+      <div class="card">
+        <h3>支払うもの 01</h3>
+        <h2>読みにくさ</h2>
+        <p class="sm">キャッシュ、事前計算、手書きの <code>RenderObject</code>。速いコードはたいてい素直ではありません。</p>
+      </div>
+      <div class="card">
+        <h3>支払うもの 02</h3>
+        <h2>新しいバグ</h2>
+        <p class="sm">キャッシュを足せば、キャッシュが古くなるバグが生まれます。状態が増えるほど壊れます。</p>
+      </div>
+      <div class="card">
+        <h3>支払うもの 03</h3>
+        <h2>あなたの時間</h2>
+        <p class="sm">効かない最適化に使った時間は戻りません。しかも「やった感」だけは残ります。</p>
+      </div>
+    </div>
+    <div class="note">
+      <p><em>計測は「速くするため」だけの道具ではありません。</em>「ここは直さなくていい」と言い切るための道具でもあります。効くと分かってから支払いましょう。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 3. 1フレームの仕組み ═══════════════ -->
+<section class="slide" data-sec="s3" data-title="4 つのスレッド" data-accent="ui"
+  data-notes="ここを飛ばすとツールが読めない。『Flutter は 1 枚の絵を 2 段階で作っている』が言えれば十分。Platform と I/O は名前だけ触れて先へ。矢印のラベル “Layer tree を渡す” を指差しながら説明する。">
+  <div class="eyebrow"><b>03</b><span>1フレームの仕組み</span></div>
+  <h1>1 枚の絵は、2 つのスレッドを<br>リレーして作られる</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <figure>
+        <svg class="diagram" viewBox="0 0 560 400" role="img" aria-label="入力イベントが Platform スレッドから UI スレッドへ渡り、UI スレッドが build・layout・paint を経て Layer tree を作り、それを Raster スレッドが GPU コマンドに変換して画面に表示するまでの流れ図。I/O スレッドは画像デコードを担当し UI スレッドへ結果を返す。">
+          <defs>
+            <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+          <g stroke="currentColor" fill="none" stroke-width="1.5" opacity=".45">
+            <rect x="120" y="8" width="300" height="46" rx="7"/>
+          </g>
+          <text x="270" y="30" text-anchor="middle" font-size="13" opacity=".6">Platform thread</text>
+          <text x="270" y="46" text-anchor="middle" font-size="11" opacity=".45">OS イベント / プラグイン</text>
+
+          <g stroke="currentColor" opacity=".55"><line x1="270" y1="54" x2="270" y2="94" marker-end="url(#ar)" stroke-width="1.5"/></g>
+          <text x="282" y="78" font-size="11" opacity=".6">タップ・スクロール</text>
+
+          <g stroke="var(--ui)" fill="var(--ui-wash)" stroke-width="2">
+            <rect x="120" y="96" width="300" height="94" rx="9"/>
+          </g>
+          <text x="270" y="120" text-anchor="middle" font-size="14" fill="var(--ui)" font-weight="700">UI thread（Dart）</text>
+          <text x="270" y="145" text-anchor="middle" font-size="13">build → layout → paint</text>
+          <text x="270" y="171" text-anchor="middle" font-size="11" opacity=".7">あなたの書いたコードが動く場所</text>
+
+          <g stroke="var(--ui)"><line x1="270" y1="190" x2="270" y2="230" marker-end="url(#ar)" stroke-width="2"/></g>
+          <text x="282" y="214" font-size="12" fill="var(--ui)" font-weight="700">Layer tree を渡す</text>
+
+          <g stroke="var(--raster)" fill="var(--raster-wash)" stroke-width="2">
+            <rect x="120" y="232" width="300" height="94" rx="9"/>
+          </g>
+          <text x="270" y="256" text-anchor="middle" font-size="14" fill="var(--raster)" font-weight="700">Raster thread</text>
+          <text x="270" y="281" text-anchor="middle" font-size="13">Layer tree → GPU コマンド</text>
+          <text x="270" y="307" text-anchor="middle" font-size="11" opacity=".7">Impeller が実際に描く場所</text>
+
+          <g stroke="var(--raster)"><line x1="270" y1="326" x2="270" y2="356" marker-end="url(#ar)" stroke-width="2"/></g>
+          <g stroke="currentColor" fill="none" stroke-width="1.5"><rect x="200" y="358" width="140" height="34" rx="7"/></g>
+          <text x="270" y="380" text-anchor="middle" font-size="13" font-weight="700">画面</text>
+
+          <g stroke="currentColor" fill="none" stroke-width="1.5" opacity=".45">
+            <rect x="440" y="96" width="112" height="60" rx="7"/>
+          </g>
+          <text x="496" y="120" text-anchor="middle" font-size="12" opacity=".6">I/O thread</text>
+          <text x="496" y="138" text-anchor="middle" font-size="10" opacity=".45">画像デコード</text>
+          <g stroke="currentColor" opacity=".45"><line x1="440" y1="130" x2="424" y2="130" marker-end="url(#ar)" stroke-width="1.5"/></g>
+        </svg>
+        <figcaption>UI が「何を描くか」を決め、Raster が「実際に描く」。</figcaption>
+      </figure>
+      <div class="stack">
+        <div class="note">
+          <p><strong>覚えるのは 2 つだけ</strong></p>
+          <p class="sm"><span class="chip ui"><span class="swatch"></span>UI thread</span> — Dart のコードが動く。<code>build()</code> の中身はここ。<strong>ここを塞ぐと全部止まる。</strong></p>
+          <p class="sm"><span class="chip raster"><span class="swatch"></span>Raster thread</span> — 受け取った Layer tree を GPU で描く。<strong>Dart のコードは 1 行も動かない。</strong></p>
+        </div>
+        <p class="sm dim">Platform スレッドは OS 側とのやりとり、I/O スレッドは画像のデコードなどを担当します。今日はこの 2 つは名前だけ覚えておけば十分です。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s3" data-title="だから、グラフは 2 本ある" data-accent="ui"
+  data-notes="この 1 枚で『なぜツールが常に 2 つの数字を出すのか』が説明できる。ここで前のスライドのライブチャートに戻って、上下 2 段になっている意味を回収してもよい。DevTools の Flutter Frames チャートでは同じ 2 つの数字が 1 本の積み上げバーになっていることも一言添える。">
+  <div class="eyebrow"><b>03</b><span>1フレームの仕組み</span></div>
+  <h1>だから、どの道具も<br>数字を 2 つ出してくる</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="chart">
+        <div class="chart-head">
+          <div class="chart-title">2 本のグラフ（Performance Overlay の模擬）</div>
+          <div class="legend">
+            <span class="chip raster"><span class="swatch"></span>Raster</span>
+            <span class="chip ui"><span class="swatch"></span>UI</span>
+            <span class="chip jank"><span class="swatch"></span>予算超過</span>
+          </div>
+        </div>
+        <div class="chart-canvas-wrap"><canvas class="framechart" data-jank="0.05" aria-label="上段が Raster スレッド、下段が UI スレッドの、フレームごとの処理時間を示す 2 本の棒グラフ。それぞれに 16.7ms の予算線が引かれ、超えたフレームは赤で示される。"></canvas></div>
+        <div class="chart-foot">
+          <div class="readout" data-readout></div>
+          <button class="act" type="button" data-load-toggle aria-pressed="false">重い処理を混ぜる</button>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>どちらか一方でも予算を超えたら、<br>そのフレームはジャンク</h2>
+        <p class="sm">合計ではありません。<strong>UI と Raster、それぞれが 16.7ms 以内</strong>である必要があります。DevTools も、どちらか一方が超えたフレームを赤くします。</p>
+        <div class="note">
+          <p class="sm">Performance Overlay は上下 2 本のグラフ、DevTools の Flutter Frames チャートは 1 本の積み上げバー。見た目は違っても、<em>出している数字は同じ 2 つ</em>です。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s3" data-title="どちらが赤いかで犯人が変わる" data-accent="raster"
+  data-notes="今日いちばん実務で使う表。印刷して机に貼れるレベル。『赤いのはどっち？』を最初に聞く癖をつけてもらう。右の Raster 側は、Dart のコードをいくら読んでも見つからない種類の原因だと強調する。">
+  <div class="eyebrow"><b>03</b><span>1フレームの仕組み</span></div>
+  <h1>赤いのはどちらか。<br>それだけで、探す場所が決まる</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="card" style="border-top:0.28cqw solid var(--ui)">
+        <h3>UI thread が赤い</h3>
+        <h2>Dart のコードが重い</h2>
+        <ul class="tight sm plain">
+          <li><code>build()</code> の中で毎回、計算・整形・ソートをしている</li>
+          <li><code>setState()</code> を上の方で呼んでいて、画面全体が作り直されている</li>
+          <li>大きな JSON のパース、同期のファイル I/O</li>
+          <li><code>ListView(children: [...])</code> で全件ぶんを一度に作っている</li>
+        </ul>
+        <p class="sm dim">→ 次に開くのは <strong>CPU Profiler</strong></p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--raster)">
+        <h3>Raster thread が赤い</h3>
+        <h2>描くのが重い</h2>
+        <ul class="tight sm plain">
+          <li><code>Opacity</code> / <code>ShaderMask</code> / <code>ColorFilter</code>（内部で <code>saveLayer()</code>）</li>
+          <li><code>Clip.antiAliasWithSaveLayer</code> での切り抜き</li>
+          <li><code>BackdropFilter</code> のぼかし、影の重ねすぎ</li>
+          <li>表示サイズよりずっと大きい画像をそのまま貼っている</li>
+        </ul>
+        <p class="sm dim">→ 次に開くのは <strong>More debugging options</strong></p>
+      </div>
+    </div>
+    <div class="note warm">
+      <p>Raster 側の原因は、<em>Dart のコードをいくら読んでも見つかりません。</em>「ロジックは何もしていないのに重い」ときは、たいていこちらです。</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s3" data-title="2026年の前提：Impeller" data-accent="raster"
+  data-notes="ネットの記事の 8 割はここが古い。『初回だけカクつく』はシェーダーコンパイルの話で、Impeller が既定になった今は基本起きない。逆に言えば、今カクついているなら原因は自分のコードにある。ここは “調べ物のときの地雷回避” として役に立つ。">
+  <div class="eyebrow"><b>03</b><span>1フレームの仕組み</span></div>
+  <h1>ネットの記事は、<br>だいたい 1 世代古い</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="card" style="border-top:0.28cqw solid var(--jank)">
+        <h3>もう追わなくていい話</h3>
+        <ul class="tight sm plain">
+          <li>「アニメーションの<strong>初回だけ</strong>カクつく」＝シェーダーコンパイルのジャンク</li>
+          <li><code>--purge-persistent-cache</code></li>
+          <li>SkSL の warm-up、<code>--bundle-sksl-path</code></li>
+        </ul>
+        <p class="sm">これは Skia 時代の話です。<strong>Flutter 3.44 では iOS / Android とも Impeller が既定</strong>（Android は Vulkan）で、シェーダーは事前に用意されています。</p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--ok)">
+        <h3>今も変わらず効く話</h3>
+        <ul class="tight sm plain">
+          <li>profile モードで、実機で測る</li>
+          <li>UI と Raster を分けて見る</li>
+          <li><code>saveLayer</code> / <code>Opacity</code> / <code>Clip</code> / blur を減らす</li>
+          <li>重い同期処理を UI スレッドから追い出す</li>
+        </ul>
+        <p class="sm">この資料の内容は、レンダラが変わっても<strong>そのまま使えます</strong>。</p>
+      </div>
+    </div>
+    <div class="note">
+      <p><em>裏を返すと、今あなたのアプリがカクついているなら、原因はほぼ自分のコードの中にあります。</em>探す価値があるということです。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 4. 進め方 ═══════════════ -->
+<section class="slide" data-sec="s4" data-title="大原則は 3 つだけ" data-accent="ui"
+  data-notes="この 3 つを守らないと、以降の作業が全部無駄になる。特に②は毎回言う。シミュレータは CPU がホストの Mac なので Dart は速すぎ、GPU の性質も実機と違うため、Raster 側の判断がまるごと狂う。">
+  <div class="eyebrow"><b>04</b><span>進め方</span></div>
+  <h1>守るのは 3 つだけ</h1>
+  <div class="body">
+    <div class="cols3">
+      <div class="card" style="border-top:0.28cqw solid var(--ui)">
+        <h3>原則 01</h3>
+        <h2>profile モードで測る</h2>
+        <p class="sm">debug モードの数字は本番と別物です。<code>flutter run --profile</code> で起動します。</p>
+        <p class="sm dim">debug が遅いのは仕様です。debug の数字で議論しないこと。</p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--raster)">
+        <h3>原則 02</h3>
+        <h2>実機で測る</h2>
+        <p class="sm">シミュレータ / エミュレータは計測対象になりません。Dart は速すぎ、GPU の性質も違います。</p>
+        <p class="sm dim">想定ユーザーが持っている中で<strong>いちばん遅い端末</strong>を 1 台決めておく。</p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--ok)">
+        <h3>原則 03</h3>
+        <h2>一度に 1 つだけ変える</h2>
+        <p class="sm">3 か所直して速くなっても、どれが効いたか分かりません。効かなかった変更を戻せなくなります。</p>
+        <p class="sm dim">変更 → 計測 → 記録、を 1 セットで。</p>
+      </div>
+    </div>
+    <div class="note bad">
+      <p>この 3 つのどれかを破ると、そのあとの作業は<em>全部やり直し</em>になります。まずここだけ守れば、あとは何とかなります。</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s4" data-title="3 つのビルドモード" data-accent="ui"
+  data-notes="表を左から読む。debug は JIT で assert も走るので、遅くて当たり前。release は速いが VM Service が無効で DevTools がつながらない。だから “速さは本番相当、でも計測はできる” profile が用意されている、という位置づけを説明する。">
+  <div class="eyebrow"><b>04</b><span>進め方</span></div>
+  <h1>profile モードは、<br>計測のために用意されている</h1>
+  <div class="body">
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:22%"></th><th style="width:26%">debug</th><th style="width:26%">profile</th><th style="width:26%">release</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>コンパイル</strong></td><td>JIT</td><td>AOT（本番と同じ）</td><td>AOT</td></tr>
+          <tr><td><strong>assert・デバッグ用チェック</strong></td><td>あり</td><td>なし</td><td>なし</td></tr>
+          <tr><td><strong>hot reload</strong></td><td>できる</td><td>できない</td><td>できない</td></tr>
+          <tr><td><strong>DevTools 接続</strong></td><td>できる</td><td><strong>できる</strong></td><td>できない</td></tr>
+          <tr><td><strong>速度</strong></td><td style="color:var(--jank)">遅い（仕様）</td><td style="color:var(--ok)">ほぼ本番相当</td><td style="color:var(--ok)">本番</td></tr>
+          <tr><td><strong>使いどころ</strong></td><td>開発中</td><td><strong>計測</strong></td><td>配布</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="cols">
+      <div class="note good">
+        <p class="sm"><strong>profile ＝ 速さは本番相当のまま、計測だけできる</strong>ように作られたモード。だから計測は必ずこれで行います。</p>
+      </div>
+      <div class="note bad">
+        <p class="sm">release は本番そのものですが、計測用の口（VM Service）が閉じているので DevTools がつながりません。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s4" data-title="計測ループ" data-accent="ui"
+  data-notes="図を指しながら 1 周回す。強調するのは「1 つだけ直す」と「もう一度測る」。直したら測る、が抜けると “直した気”だけが残る。ループの入口が『再現手順を固定』であることも大事で、これが次のスライド。">
+  <div class="eyebrow"><b>04</b><span>進め方</span></div>
+  <h1>同じ輪を、目標に届くまで回す</h1>
+  <div class="body">
+    <figure>
+      <svg class="diagram" viewBox="0 0 960 230" role="img" aria-label="計測ループの流れ図。再現手順を固定する、計測する、犯人を特定する、1 つだけ直す、もう一度計測する、の 5 段階が左から右へ並び、最後の段階から 2 番目の計測へ戻る矢印が伸びている。目標に届いたらループを抜ける。">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+        <g stroke="currentColor" fill="none" stroke-width="1.6">
+          <rect x="6"   y="28" width="164" height="66" rx="9"/>
+          <rect x="204" y="28" width="164" height="66" rx="9" stroke="var(--ui)" stroke-width="2.4"/>
+          <rect x="402" y="28" width="164" height="66" rx="9"/>
+          <rect x="600" y="28" width="164" height="66" rx="9"/>
+          <rect x="798" y="28" width="156" height="66" rx="9"/>
+        </g>
+        <g font-size="13" text-anchor="middle">
+          <text x="88"  y="56" font-size="11" opacity=".55">STEP 1</text><text x="88"  y="76">再現手順を固定</text>
+          <text x="286" y="56" font-size="11" fill="var(--ui)">STEP 2</text><text x="286" y="76" fill="var(--ui)" font-weight="700">計測する</text>
+          <text x="484" y="56" font-size="11" opacity=".55">STEP 3</text><text x="484" y="76">犯人を特定</text>
+          <text x="682" y="56" font-size="11" opacity=".55">STEP 4</text><text x="682" y="76">1 つだけ直す</text>
+          <text x="876" y="56" font-size="11" opacity=".55">STEP 5</text><text x="876" y="76">もう一度計測</text>
+        </g>
+        <g stroke="currentColor" stroke-width="1.6" opacity=".7">
+          <line x1="170" y1="61" x2="200" y2="61" marker-end="url(#ar2)"/>
+          <line x1="368" y1="61" x2="398" y2="61" marker-end="url(#ar2)"/>
+          <line x1="566" y1="61" x2="596" y2="61" marker-end="url(#ar2)"/>
+          <line x1="764" y1="61" x2="794" y2="61" marker-end="url(#ar2)"/>
+        </g>
+        <g stroke="var(--ui)" fill="none" stroke-width="2">
+          <path d="M876 94 L876 160 L286 160 L286 98" marker-end="url(#ar2)"/>
+        </g>
+        <text x="581" y="180" text-anchor="middle" font-size="13" fill="var(--ui)" font-weight="700">目標に届いていなければ、同じ手順でもう一度</text>
+        <g stroke="var(--ok)" stroke-width="2"><line x1="954" y1="61" x2="920" y2="61" transform="translate(34,0)" marker-end="url(#ar2)"/></g>
+        <text x="876" y="212" text-anchor="middle" font-size="12" fill="var(--ok)" font-weight="700">目標に届いたら、そこで終わり</text>
+      </svg>
+      <figcaption>入口は「計測」ではなく「再現手順を固定する」。ここが揺れると、以降の数字は比べられません。</figcaption>
+    </figure>
+    <div class="note">
+      <p class="sm"><strong>STEP 4 で複数の変更をまとめないこと。</strong>速くなったとき、どれが効いたのか分からなくなります。効かなかった変更はコードに負債として残ります。</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s4" data-title="再現手順を固定する" data-accent="ui"
+  data-notes="ここは地味だが効く。『なんとなくスクロール』では前後比較にならない。右のテンプレをそのままチケットやメモに貼れる形で渡す。端末名と Flutter のバージョンを書いておくのは、半年後の自分のため。">
+  <div class="eyebrow"><b>04</b><span>進め方</span></div>
+  <h1>「同じ操作」を決めてから測る</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <div class="note bad">
+          <p><strong>比べられない測り方</strong></p>
+          <p class="sm">「一覧をなんとなくスクロールして、赤が出たら記録」<br>→ 次に測るとき、同じ強さでフリックできません。</p>
+        </div>
+        <div class="note good">
+          <p><strong>比べられる測り方</strong></p>
+          <p class="sm">「一覧の先頭から、下方向に 3 回フリック。指を離してから 2 秒待って記録を止める」<br>→ 誰がやっても、いつやっても、同じ手順です。</p>
+        </div>
+        <p class="sm dim">操作が手で揺れるのが気になる場合は、記録する区間を長めに取り、フレーム数ではなく<strong>超過フレームの割合</strong>で比べます。</p>
+      </div>
+      <div class="stack">
+        <h2>記録に残す 5 項目</h2>
+<pre><code><span class="c"># 一覧スクロールのジャンク</span>
+端末      : Pixel 6a（実機）
+ビルド    : flutter 3.44.0 / --profile
+操作      : 一覧の先頭から下に 3 回フリック
+結果      : 16.7ms 超え <span class="s">42</span> / 300 フレーム
+            worst <span class="s">68ms</span>（Raster 側）
+スクショ  : devtools-before.png</code></pre>
+        <p class="sm">直したあとに同じ 5 行を書けば、それがそのまま「効いた証拠」になります。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s4" data-title="終わりを先に決める" data-accent="ok"
+  data-notes="profiling で一番よくある失敗は “終われないこと”。目標を数字で決めてから始める。目標に届いたら、まだ改善余地があってもやめる。ここで前の『最適化には対価がある』を回収する。">
+  <div class="eyebrow"><b>04</b><span>進め方</span></div>
+  <h1>始める前に、<br>終わる条件を決めておく</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="stack">
+        <div class="note bad">
+          <p><strong>終わらない目標</strong></p>
+          <ul class="tight sm plain">
+            <li>「速くなるまで」</li>
+            <li>「サクサクになるまで」</li>
+            <li>「赤がなるべく減るまで」</li>
+          </ul>
+          <p class="sm">どこまでやっても、もう少し速くできてしまいます。</p>
+        </div>
+        <div class="note good">
+          <p><strong>終われる目標</strong></p>
+          <ul class="tight sm plain">
+            <li>「一覧のスクロールで、16.7ms 超えのフレームを <span class="metric">0</span> にする」</li>
+            <li>「worst フレームを <span class="metric">24ms</span> 以下にする」</li>
+            <li>「タップから画面が出るまでを <span class="metric">400ms</span> 以下にする」</li>
+          </ul>
+          <p class="sm">届いたかどうかが、その場で判定できます。</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>目標は「ゼロ」でなくていい</h2>
+        <p class="sm">すべてのフレームを 16.7ms 以内に収めるのは、実機・実データでは簡単ではありません。まずは<strong>「一番よく使う画面の、一番よくやる操作」だけ</strong>を対象にします。</p>
+        <div class="note">
+          <p class="sm"><strong>優先順位の付け方</strong></p>
+          <ul class="tight sm plain">
+            <li>使われる頻度が高い画面から</li>
+            <li>ユーザーが待たされていると気づく操作から</li>
+            <li>直すコストが小さいものから</li>
+          </ul>
+        </div>
+        <p class="sm dim">目標に届いたら、まだ改善余地があってもそこで止める。それが「最適化には対価がある」の実践です。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 5. ツールの使い方 ═══════════════ -->
+<section class="slide" data-sec="s5" data-title="今日使う 4 つの道具" data-accent="ui"
+  data-notes="道具は多いが、使う順番が決まっている。上の 2 つで『どっちのスレッドが赤いか』を見て、下の 2 つで『どのコードか』まで降りる。全部覚える必要はなく、①→②の順に開くことだけ覚えて帰ってもらう。">
+  <div class="eyebrow"><b>05</b><span>ツールの使い方</span></div>
+  <h1>道具は 4 つ。使う順番が決まっている</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="card" style="border-top:0.28cqw solid var(--ui)">
+        <h3>まず — どっちが赤い？</h3>
+        <h2>01 · Performance Overlay</h2>
+        <p class="sm">アプリの画面に直接 2 本のグラフを重ねる。DevTools を開かなくても、その場で分かる。</p>
+        <h2 style="margin-top:1cqw">02 · Performance ビュー</h2>
+        <p class="sm">DevTools の本体。フレームごとの記録が残るので、あとから 1 本ずつ調べられる。</p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--raster)">
+        <h3>次に — どのコード？</h3>
+        <h2>03 · Timeline Events</h2>
+        <p class="sm">そのフレームの中で何がどれだけ時間を使ったか。Widget 名まで出せる。</p>
+        <h2 style="margin-top:1cqw">04 · CPU Profiler</h2>
+        <p class="sm">UI スレッドが重いときに、メソッド単位まで降りる。Dart のコードだけが対象。</p>
+      </div>
+    </div>
+    <div class="note">
+      <p><em>いきなり CPU Profiler を開かないこと。</em>まず「UI と Raster のどちらが赤いか」を見ます。Raster が赤いなら、CPU Profiler には何も写りません。</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="起動する" data-accent="ui"
+  data-notes="ここは実際に手を動かして見せる。flutter devices でデバイス ID を確認 → --profile で起動 → 出てきた DevTools の URL をブラウザで開く。IDE 派には launch.json とメニューの場所を示す。初回は URL の 2 行を見落としがちなので、指差して確認する。">
+  <div class="eyebrow"><b>05</b><span>ツールの使い方</span></div>
+  <h1>起動する</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <h3>コマンドライン</h3>
+<pre><code><span class="c"># 1. デバイスを確認する</span>
+flutter devices
+
+<span class="c"># 2. profile モードで起動する</span>
+flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
+        <h3 style="margin-top:1cqw">起動すると、この 2 行が出る</h3>
+<pre><code><span class="c">A Dart VM Service on Pixel 6a is available at:</span>
+<span class="c">  http://127.0.0.1:5xxxx/xxxxxxxx=/</span>
+The Flutter DevTools debugger and profiler
+is available at:
+  <span class="s">http://127.0.0.1:9100?uri=...</span>   <span class="c">← これを開く</span></code></pre>
+      </div>
+      <div class="stack">
+        <h3>VS Code</h3>
+<pre><code><span class="c">// .vscode/launch.json</span>
+{
+  <span class="s">"name"</span>: <span class="s">"Flutter (profile)"</span>,
+  <span class="s">"request"</span>: <span class="s">"launch"</span>,
+  <span class="s">"type"</span>: <span class="s">"dart"</span>,
+  <span class="s">"flutterMode"</span>: <span class="s">"profile"</span>
+}</code></pre>
+        <h3 style="margin-top:1cqw">Android Studio / IntelliJ</h3>
+        <p class="sm">メニューの <strong>Run ▸ Flutter Run main.dart in Profile Mode</strong></p>
+        <div class="note bad">
+          <p class="sm"><strong>よくあるつまずき</strong><br>いつもの実行ボタンで起動してしまい、debug モードのまま測っている。DevTools 上部に <code>debug</code> のバッジが出ていたら、起動し直してください。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="Performance Overlay" data-accent="ui"
+  data-notes="一番安い一次診断。ターミナルで P を押すだけ。読み方は『上が Raster、下が UI、白い横線が 16ms』の 3 つだけ。ここで判断できれば DevTools を開かずに済むことも多い。実演では、デモアプリのトグルを切り替えて赤が消えるところをここで見せてもよい。">
+  <div class="eyebrow"><b>05</b><span>ツールの使い方</span></div>
+  <h1>まず Performance Overlay</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <figure>
+        <svg class="diagram" viewBox="0 0 620 300" role="img" aria-label="Performance Overlay の読み方の図。アプリ画面の上に 2 本のグラフが重なっており、上段が Raster スレッド、下段が UI スレッド。各グラフには 16ms を示す白い横線があり、それを超えた棒は赤く表示される。">
+          <g stroke="currentColor" fill="none" stroke-width="1.6" opacity=".5">
+            <rect x="4" y="4" width="330" height="292" rx="12"/>
+          </g>
+          <text x="169" y="240" text-anchor="middle" font-size="14" opacity=".45">アプリの画面</text>
+          <text x="169" y="262" text-anchor="middle" font-size="12" opacity=".35">（そのまま操作できる）</text>
+
+          <rect x="20" y="20" width="298" height="82" rx="4" fill="var(--raster-wash)" stroke="var(--raster)" stroke-width="1.4"/>
+          <g fill="var(--raster)">
+            <rect x="28"  y="72" width="8" height="24"/><rect x="40" y="66" width="8" height="30"/>
+            <rect x="52"  y="78" width="8" height="18"/><rect x="64" y="70" width="8" height="26"/>
+            <rect x="76"  y="74" width="8" height="22"/><rect x="88" y="64" width="8" height="32"/>
+            <rect x="100" y="80" width="8" height="16"/><rect x="112" y="68" width="8" height="28"/>
+            <rect x="136" y="76" width="8" height="20"/><rect x="148" y="70" width="8" height="26"/>
+            <rect x="160" y="82" width="8" height="14"/><rect x="172" y="66" width="8" height="30"/>
+            <rect x="196" y="78" width="8" height="18"/><rect x="208" y="72" width="8" height="24"/>
+            <rect x="220" y="68" width="8" height="28"/><rect x="232" y="76" width="8" height="20"/>
+            <rect x="256" y="70" width="8" height="26"/><rect x="268" y="80" width="8" height="16"/>
+            <rect x="280" y="74" width="8" height="22"/><rect x="292" y="66" width="8" height="30"/>
+          </g>
+          <g fill="var(--jank)">
+            <rect x="124" y="30" width="8" height="66"/><rect x="184" y="26" width="8" height="70"/>
+            <rect x="244" y="34" width="8" height="62"/>
+          </g>
+          <line x1="20" y1="62" x2="318" y2="62" stroke="currentColor" stroke-width="1.4" stroke-dasharray="4 4"/>
+          <text x="26" y="36" font-size="12" fill="var(--raster)" font-weight="700">Raster</text>
+
+          <rect x="20" y="112" width="298" height="82" rx="4" fill="var(--ui-wash)" stroke="var(--ui)" stroke-width="1.4"/>
+          <g fill="var(--ui)">
+            <rect x="28"  y="172" width="8" height="16"/><rect x="40" y="176" width="8" height="12"/>
+            <rect x="52"  y="170" width="8" height="18"/><rect x="64" y="174" width="8" height="14"/>
+            <rect x="76"  y="178" width="8" height="10"/><rect x="88" y="172" width="8" height="16"/>
+            <rect x="100" y="176" width="8" height="12"/><rect x="112" y="170" width="8" height="18"/>
+            <rect x="124" y="174" width="8" height="14"/><rect x="136" y="178" width="8" height="10"/>
+            <rect x="148" y="172" width="8" height="16"/><rect x="160" y="176" width="8" height="12"/>
+            <rect x="172" y="170" width="8" height="18"/><rect x="184" y="174" width="8" height="14"/>
+            <rect x="196" y="178" width="8" height="10"/><rect x="208" y="172" width="8" height="16"/>
+            <rect x="220" y="176" width="8" height="12"/><rect x="232" y="170" width="8" height="18"/>
+            <rect x="244" y="174" width="8" height="14"/><rect x="256" y="178" width="8" height="10"/>
+            <rect x="268" y="172" width="8" height="16"/><rect x="280" y="176" width="8" height="12"/>
+            <rect x="292" y="170" width="8" height="18"/>
+          </g>
+          <line x1="20" y1="154" x2="318" y2="154" stroke="currentColor" stroke-width="1.4" stroke-dasharray="4 4"/>
+          <text x="26" y="128" font-size="12" fill="var(--ui)" font-weight="700">UI</text>
+
+          <g stroke="currentColor" stroke-width="1.4" opacity=".6">
+            <line x1="340" y1="62" x2="386" y2="62"/><line x1="340" y1="154" x2="386" y2="154"/>
+          </g>
+          <text x="394" y="58" font-size="13" font-weight="700">白い横線 ＝ 16ms</text>
+          <text x="394" y="76" font-size="12" opacity=".7">この線を超えた棒が問題</text>
+          <text x="394" y="150" font-size="13" font-weight="700">下のグラフ ＝ UI</text>
+          <text x="394" y="168" font-size="12" opacity=".7">上のグラフ ＝ Raster</text>
+          <text x="394" y="212" font-size="13" fill="var(--jank)" font-weight="700">この例は Raster 側が</text>
+          <text x="394" y="230" font-size="13" fill="var(--jank)" font-weight="700">3 回はみ出している</text>
+        </svg>
+        <figcaption>アプリの画面の上に、直接 2 本のグラフが重なります。直近 300 フレームぶんが表示されます。</figcaption>
+      </figure>
+      <div class="stack">
+        <h2>出し方</h2>
+        <ul class="plain tight sm">
+          <li><code>flutter run --profile</code> で起動したターミナルで <span class="kbd">P</span> を押す</li>
+          <li>または DevTools の Performance ビューにあるトグル</li>
+          <li>コードからなら <code>MaterialApp(showPerformanceOverlay: true)</code></li>
+        </ul>
+        <div class="note">
+          <p class="sm"><strong>読み方は 3 つだけ</strong></p>
+          <ul class="tight sm plain">
+            <li>上のグラフ ＝ Raster、下のグラフ ＝ UI</li>
+            <li>白い横線 ＝ 16ms の予算</li>
+            <li>線を超えている方が、探すべき側</li>
+          </ul>
+        </div>
+        <p class="sm dim">ここで判断が付けば、DevTools を開かずに済むこともあります。まずはこれ。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="Performance ビューの地図" data-accent="ui"
+  data-notes="実物を投影する前に、画面のどこに何があるかを図で 30 秒だけ説明する。初見では情報が多すぎて迷子になるので、『上のチャートと、赤いバーのクリックだけ』に注意を向けさせる。実物に切り替えたら、この 4 か所を順に指差す。">
+  <div class="eyebrow"><b>05</b><span>ツールの使い方</span></div>
+  <h1>DevTools ▸ Performance の地図</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <figure>
+        <svg class="diagram" viewBox="0 0 700 336" role="img" aria-label="DevTools の Performance ビューの構成図。上部にタブ、その下に Flutter Frames チャート、右上に Enhance Tracing と More debugging options のボタン、下部に Frame Analysis と Timeline Events のタブと詳細表示領域がある。">
+          <g stroke="currentColor" fill="none" stroke-width="1.6" opacity=".55">
+            <rect x="2" y="2" width="696" height="332" rx="10"/>
+            <line x1="2" y1="34" x2="698" y2="34"/>
+          </g>
+          <g font-size="13">
+            <rect x="14" y="9" width="94" height="20" rx="4" fill="var(--ui-wash)" stroke="var(--ui)" stroke-width="1.4"/>
+            <text x="61" y="24" text-anchor="middle" fill="var(--ui)" font-weight="700">Performance</text>
+            <text x="126" y="24" opacity=".5">CPU Profiler</text>
+            <text x="240" y="24" opacity=".5">Memory</text>
+            <text x="330" y="24" opacity=".5">Network</text>
+            <text x="422" y="24" opacity=".5">App Size</text>
+          </g>
+
+          <text x="16" y="56" font-size="13" font-weight="700">Flutter Frames</text>
+          <g stroke="currentColor" fill="none" stroke-width="1.4" opacity=".45">
+            <rect x="14" y="66" width="446" height="92" rx="6"/>
+            <rect x="470" y="66" width="216" height="92" rx="6"/>
+          </g>
+          <g fill="var(--ui)">
+            <rect x="26" y="132" width="9" height="20"/><rect x="40" y="136" width="9" height="16"/>
+            <rect x="54" y="130" width="9" height="22"/><rect x="68" y="134" width="9" height="18"/>
+            <rect x="96" y="132" width="9" height="20"/><rect x="110" y="138" width="9" height="14"/>
+            <rect x="124" y="130" width="9" height="22"/><rect x="138" y="134" width="9" height="18"/>
+            <rect x="166" y="136" width="9" height="16"/><rect x="180" y="130" width="9" height="22"/>
+            <rect x="194" y="134" width="9" height="18"/><rect x="222" y="132" width="9" height="20"/>
+            <rect x="236" y="136" width="9" height="16"/><rect x="250" y="130" width="9" height="22"/>
+            <rect x="278" y="134" width="9" height="18"/><rect x="292" y="132" width="9" height="20"/>
+            <rect x="306" y="136" width="9" height="16"/><rect x="334" y="130" width="9" height="22"/>
+            <rect x="348" y="134" width="9" height="18"/><rect x="362" y="132" width="9" height="20"/>
+            <rect x="390" y="136" width="9" height="16"/><rect x="404" y="130" width="9" height="22"/>
+            <rect x="418" y="134" width="9" height="18"/><rect x="432" y="132" width="9" height="20"/>
+          </g>
+          <g fill="var(--raster)">
+            <rect x="26" y="120" width="9" height="12"/><rect x="40" y="122" width="9" height="14"/>
+            <rect x="54" y="118" width="9" height="12"/><rect x="68" y="122" width="9" height="12"/>
+            <rect x="96" y="120" width="9" height="12"/><rect x="110" y="124" width="9" height="14"/>
+            <rect x="124" y="118" width="9" height="12"/><rect x="138" y="122" width="9" height="12"/>
+            <rect x="166" y="122" width="9" height="14"/><rect x="180" y="118" width="9" height="12"/>
+            <rect x="194" y="122" width="9" height="12"/><rect x="222" y="120" width="9" height="12"/>
+            <rect x="236" y="124" width="9" height="12"/><rect x="250" y="118" width="9" height="12"/>
+            <rect x="278" y="122" width="9" height="12"/><rect x="292" y="120" width="9" height="12"/>
+            <rect x="306" y="124" width="9" height="12"/><rect x="334" y="118" width="9" height="12"/>
+            <rect x="348" y="122" width="9" height="12"/><rect x="362" y="120" width="9" height="12"/>
+            <rect x="390" y="124" width="9" height="12"/><rect x="404" y="118" width="9" height="12"/>
+            <rect x="418" y="122" width="9" height="12"/><rect x="432" y="120" width="9" height="12"/>
+          </g>
+          <g fill="var(--jank)">
+            <rect x="82" y="82" width="9" height="70"/><rect x="152" y="78" width="9" height="74"/>
+            <rect x="208" y="86" width="9" height="66"/><rect x="264" y="80" width="9" height="72"/>
+            <rect x="320" y="84" width="9" height="68"/><rect x="376" y="88" width="9" height="64"/>
+          </g>
+          <line x1="20" y1="116" x2="454" y2="116" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 4" opacity=".7"/>
+          <text x="452" y="111" font-size="11" text-anchor="end" opacity=".7">16.7 ms</text>
+
+          <g stroke="var(--ui)" fill="none" stroke-width="1.4">
+            <rect x="482" y="80" width="192" height="24" rx="12"/>
+            <rect x="482" y="114" width="192" height="24" rx="12"/>
+          </g>
+          <text x="578" y="96"  text-anchor="middle" font-size="12" fill="var(--ui)">Enhance Tracing ▾</text>
+          <text x="578" y="130" text-anchor="middle" font-size="12" fill="var(--ui)">More debugging options ▾</text>
+
+          <g font-size="13">
+            <rect x="14" y="176" width="118" height="24" rx="4" fill="var(--ui-wash)" stroke="var(--ui)" stroke-width="1.4"/>
+            <text x="73" y="192" text-anchor="middle" fill="var(--ui)" font-weight="700">Frame Analysis</text>
+            <text x="152" y="192" opacity=".5">Timeline Events</text>
+          </g>
+          <g stroke="currentColor" fill="none" stroke-width="1.4" opacity=".45">
+            <rect x="14" y="208" width="672" height="114" rx="6"/>
+          </g>
+          <g opacity=".35" stroke="currentColor" stroke-width="8" stroke-linecap="round">
+            <line x1="30" y1="228" x2="300" y2="228"/><line x1="30" y1="252" x2="480" y2="252"/>
+            <line x1="30" y1="276" x2="220" y2="276"/><line x1="30" y1="300" x2="390" y2="300"/>
+          </g>
+
+          <g font-size="13" font-weight="700">
+            <circle cx="238" cy="56" r="11" fill="var(--ui)"/><text x="238" y="61" text-anchor="middle" fill="#fff">1</text>
+            <circle cx="86"  cy="66" r="11" fill="var(--jank)"/><text x="86" y="71" text-anchor="middle" fill="#fff">2</text>
+            <circle cx="73"  cy="164" r="11" fill="var(--ui)"/><text x="73" y="169" text-anchor="middle" fill="#fff">3</text>
+            <circle cx="578" cy="60" r="11" fill="var(--ui)"/><text x="578" y="65" text-anchor="middle" fill="#fff">4</text>
+          </g>
+        </svg>
+      </figure>
+      <div class="stack">
+        <ul class="plain tight sm">
+          <li><strong>1 · Flutter Frames チャート</strong><br>操作した分だけ、フレームが 1 本ずつ積まれていきます。</li>
+          <li><strong>2 · 赤いバー</strong><br>予算を超えたフレーム。<em>クリックすると下に詳細が出ます。</em>ここが起点です。</li>
+          <li><strong>3 · Frame Analysis / Timeline Events</strong><br>選んだフレームの中身。まずは Frame Analysis から。</li>
+          <li><strong>4 · Enhance Tracing / More debugging options</strong><br>もっと細かく調べたいときのスイッチ。必要になってから触ります。</li>
+        </ul>
+        <div class="note">
+          <p class="sm">はじめは「赤いバーを 1 本クリックする」だけで十分です。それ以外のボタンは、必要になってから覚えれば間に合います。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="Frame Analysis タブ" data-accent="ui"
+  data-notes="初心者が最初に開くべき場所。DevTools が『このフレームのここが怪しい』とヒントを文章で出してくれる。いきなり Timeline を読むと迷子になるので、まずここ。ヒントは万能ではないが、探す方向を決めるには十分。">
+  <div class="eyebrow"><b>05</b><span>ツールの使い方</span></div>
+  <h1>Frame Analysis — 最初に開く場所</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <p class="lead">赤いバーを選ぶと、DevTools が<em>そのフレームの怪しい場所を文章で教えてくれます。</em></p>
+        <div class="card">
+          <h3>ここに出るもの</h3>
+          <ul class="tight sm plain">
+            <li>そのフレームの UI 時間と Raster 時間</li>
+            <li>時間を食っていた区間（build / layout / paint / raster）</li>
+            <li>「この Widget の build が重い」「shader コンパイルが起きた」などのヒント</li>
+            <li>該当箇所へのリンク</li>
+          </ul>
+        </div>
+        <div class="note">
+          <p class="sm">ヒントが出ない、または的外れなこともあります。そのときに初めて Timeline Events を開きます。<strong>順番を守ると迷いません。</strong></p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>ここまでで分かること</h2>
+        <div class="note good">
+          <p class="sm"><strong>だいたいの場合、ここで終わります</strong></p>
+          <p class="sm">「UI が 42ms、build が 38ms を占めている」まで分かれば、あとはそのコードを読むだけです。</p>
+        </div>
+        <div class="note warm">
+          <p class="sm"><strong>足りないとき</strong></p>
+          <p class="sm">「どの Widget の build か」まで知りたい → <strong>Enhance Tracing</strong>（次のスライド）<br>「どのメソッドか」まで知りたい → <strong>CPU Profiler</strong></p>
+        </div>
+        <p class="sm dim">記録は溜まっていくので、Performance ビューの上部にあるゴミ箱アイコンで一度クリアしてから測り直すと、目的のフレームを見つけやすくなります。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="Enhance Tracing" data-accent="ui"
+  data-notes="これを ON にすると Timeline に Widget 名が出る。ただし ON 自体が重く、計測結果が悪化するので『原因特定のときだけ ON、終わったら OFF』を必ず言う。ON にしたまま前後比較すると数字が信用できなくなる。">
+  <div class="eyebrow"><b>05</b><span>ツールの使い方</span></div>
+  <h1>Enhance Tracing で、名前を出す</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th style="width:38%">スイッチ</th><th>Timeline に出るようになるもの</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Track Widget Builds</strong></td><td><code>build()</code> の呼び出しが、<strong>Widget 名つき</strong>で出る</td></tr>
+              <tr><td><strong>Track Layouts</strong></td><td>RenderObject の layout が出る。<code>intrinsics</code> を含む</td></tr>
+              <tr><td><strong>Track Paints</strong></td><td>RenderObject の paint が出る</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note bad">
+          <p><strong>ON にすると、アプリ自体が重くなります</strong></p>
+          <p class="sm">トレースを取ること自体にコストがあるためです。<em>犯人を探すときだけ ON にして、前後比較のときは必ず OFF に戻す。</em>ON のまま測った数字は、比較に使えません。</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>使いどころ</h2>
+        <ul class="plain tight sm">
+          <li>UI スレッドが赤い、しかし Frame Analysis のヒントでは足りない</li>
+          <li>「どの Widget が毎フレーム作り直されているのか」を知りたい</li>
+          <li>リストの行が想定より多く build されている気がする</li>
+        </ul>
+        <h2 style="margin-top:0.6cqw">手順</h2>
+        <ol class="tight sm">
+          <li>Enhance Tracing ▸ <strong>Track Widget Builds</strong> を ON</li>
+          <li>同じ操作をもう一度する</li>
+          <li>赤いフレームを選び、<strong>Timeline Events</strong> タブを開く</li>
+          <li>太い帯に Widget 名が入っているので、それを読む</li>
+          <li>終わったら <strong>OFF に戻す</strong></li>
+        </ol>
+        <p class="sm dim">Track Layouts を ON にすると <code>$runtimeType intrinsics</code> という帯が見えることがあります。これは高さを測るためだけに余計なレイアウト計算が走っているサインで、行の高さを固定すると消えます。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="Timeline Events の読み方" data-accent="ui"
+  data-notes="読み方は『横幅＝時間、太い帯を探す』の一言。上から下へ入れ子になっていて、下にいくほど呼ばれた先。自分で Timeline.startSync を打った名前もここに出る、というのが +α への伏線。">
+  <div class="eyebrow"><b>05</b><span>ツールの使い方</span></div>
+  <h1>Timeline Events — 横幅が時間</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <figure>
+        <svg class="diagram" viewBox="0 0 660 210" role="img" aria-label="Timeline Events の読み方の図。横方向が時間を表し、上から下へ呼び出しが入れ子になっている。Frame から Animate、Build、Layout、Paint と続き、Build の下にある特定の Widget の build が最も横幅が広い。">
+          <text x="0" y="14" font-size="12" opacity=".6">← 時間 →</text>
+          <g stroke="currentColor" stroke-width="1" opacity=".25">
+            <line x1="0" y1="22" x2="660" y2="22"/>
+          </g>
+          <g stroke="none">
+            <rect x="0"   y="32" width="640" height="26" rx="3" fill="var(--ui)" opacity=".22"/>
+            <rect x="14"  y="64" width="90"  height="26" rx="3" fill="var(--ui)" opacity=".3"/>
+            <rect x="112" y="64" width="440" height="26" rx="3" fill="var(--ui)" opacity=".3"/>
+            <rect x="560" y="64" width="76"  height="26" rx="3" fill="var(--ui)" opacity=".3"/>
+            <rect x="120" y="96" width="60"  height="26" rx="3" fill="var(--ui)" opacity=".45"/>
+            <rect x="188" y="96" width="352" height="26" rx="3" fill="var(--jank)" opacity=".85"/>
+            <rect x="196" y="128" width="330" height="26" rx="3" fill="var(--jank)" opacity=".55"/>
+          </g>
+          <g font-size="12" fill="currentColor">
+            <text x="8"   y="49">Frame</text>
+            <text x="22"  y="81">Animate</text>
+            <text x="120" y="81">Build</text>
+            <text x="568" y="81">Paint</text>
+            <text x="128" y="113">AppBar</text>
+          </g>
+          <text x="196" y="113" font-size="12" fill="#fff" font-weight="700">TrackListPage.build</text>
+          <text x="204" y="145" font-size="12" fill="currentColor" font-weight="700">_expensiveScore</text>
+          <g stroke="var(--jank)" stroke-width="1.6" fill="none">
+            <path d="M540 109 L600 109 L600 176"/>
+            <path d="M596 170 L600 178 L604 170" fill="var(--jank)" stroke="none"/>
+          </g>
+          <text x="656" y="196" text-anchor="end" font-size="13" fill="var(--jank)" font-weight="700">いちばん太い帯を探すだけ</text>
+        </svg>
+        <figcaption>上から下へ、呼び出しが入れ子になって並びます。下にいくほど「呼ばれた先」です。</figcaption>
+      </figure>
+      <div class="stack">
+        <h2>読み方は 2 つだけ</h2>
+        <ul class="plain tight sm">
+          <li><strong>横幅 ＝ かかった時間。</strong>細かい帯は無視して、いちばん太い帯を探します</li>
+          <li><strong>下にたどる。</strong>太い帯の下に、さらに太い帯があれば、そちらが本当の原因です</li>
+        </ul>
+        <div class="note">
+          <p class="sm">Enhance Tracing を ON にしていれば、帯に <strong>Widget 名</strong>が入ります。OFF のままだと <code>Build</code> のような大きな括りまでしか分かりません。</p>
+        </div>
+        <div class="note good">
+          <p class="sm">自分のコードに <code>Timeline.startSync('名前')</code> を打っておくと、その名前の帯がここに出ます。「この処理が何 ms か知りたい」ときに便利です。<span class="dim">（+α で扱います）</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="More debugging options" data-accent="raster"
+  data-notes="Raster が赤いときの決定打。原理は単純で、疑わしい描画機能を丸ごと無効化して、直るかどうかを見る。直れば犯人確定。これは “消して確かめる” 二分探索で、コードを 1 行も触らずに切り分けられるのが強い。">
+  <div class="eyebrow"><b>05</b><span>ツールの使い方</span></div>
+  <h1>消してみて、直るかを見る</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <p class="lead">Raster が赤いときは、<em>疑わしい描画をまとめて無効化して、直るかどうかを見ます。</em>コードは 1 行も触りません。</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th style="width:44%">スイッチ（More debugging options）</th><th>OFF にして直ったら</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Render Clip layers</strong></td><td>切り抜きが原因。<code>ClipRRect</code> をやめ <code>borderRadius</code> へ</td></tr>
+              <tr><td><strong>Render Opacity layers</strong></td><td>半透明が原因。色の alpha を直接指定するか <code>AnimatedOpacity</code> へ</td></tr>
+              <tr><td><strong>Render Physical shape layers</strong></td><td>影・elevation が原因。枚数を減らす</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note warm">
+          <p class="sm">OFF にすると<strong>見た目は崩れます</strong>。それでいいのです。ここで見ているのは見た目ではなく、Raster の時間だけです。</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>やっていることは二分探索</h2>
+        <ol class="tight sm">
+          <li>Raster が赤い、と分かっている</li>
+          <li>Clip を消す → 直らない → Clip は無罪</li>
+          <li>Opacity を消す → <strong>直った</strong> → 犯人はここ</li>
+          <li>コードを読んで <code>Opacity</code> を探す</li>
+          <li>1 か所だけ直して、もう一度測る</li>
+        </ol>
+        <div class="note">
+          <p class="sm"><strong>どのスイッチでも直らないときは</strong><br>画像を疑います。表示サイズよりずっと大きい画像を貼っていないか、<code>cacheWidth</code> / <code>cacheHeight</code> を指定しているか。<span class="dim">（+α で扱います）</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="CPU Profiler" data-accent="ui"
+  data-notes="UI スレッドが赤いときの最終手段。4 つのタブがあるが、初心者は Bottom Up だけ見ればよい。Self time と Total time の違いが分かれば読める。図で、呼び出しの入れ子と Self が一致しない例を見せる。フィルタで自分のパッケージだけに絞るのを忘れずに。">
+  <div class="eyebrow"><b>05</b><span>ツールの使い方</span></div>
+  <h1>CPU Profiler — メソッドまで降りる</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <h3>手順</h3>
+        <p class="sm"><strong>Record</strong> → 重い操作をする → <strong>Stop</strong>。UI スレッドの Dart コードだけが対象です。</p>
+        <figure>
+          <svg class="diagram" viewBox="0 0 620 170" role="img" aria-label="Self time と Total time の違いを示す図。loadPage が 100ms、その中で buildRows が 98ms、さらにその中の expensiveScore が 95ms を占める。expensiveScore だけが自分自身で 95ms を使っており、他の 2 つは呼び出し先で時間を使っている。">
+            <g stroke="none">
+              <rect x="8"  y="16" width="470" height="30" rx="4" fill="var(--ui)" opacity=".2"/>
+              <rect x="8"  y="16" width="10"  height="30" rx="2" fill="var(--ui)"/>
+              <rect x="26" y="56" width="452" height="30" rx="4" fill="var(--ui)" opacity=".3"/>
+              <rect x="26" y="56" width="14"  height="30" rx="2" fill="var(--ui)"/>
+              <rect x="44" y="96" width="430" height="30" rx="4" fill="var(--jank)" opacity=".9"/>
+            </g>
+            <g font-size="12" fill="currentColor">
+              <text x="24" y="36">loadPage()</text>
+              <text x="46" y="76">buildRows()</text>
+              <text x="490" y="36">Total 100ms / <tspan font-weight="700">Self 2ms</tspan></text>
+              <text x="490" y="76">Total 98ms / <tspan font-weight="700">Self 3ms</tspan></text>
+              <text x="490" y="116" fill="var(--jank)" font-weight="700">Total 95ms / Self 95ms</text>
+            </g>
+            <text x="56" y="116" font-size="12" fill="#fff" font-weight="700">expensiveScore()</text>
+            <text x="8" y="152" font-size="12" opacity=".7">濃い部分＝ Self time（そのメソッド自身が使った時間）</text>
+          </svg>
+        </figure>
+        <div class="note">
+          <p class="sm"><strong>Total time</strong>＝呼び出し先も含めた合計。<strong>Self time</strong>＝そのメソッド自身が使った分。<em>直す価値があるのは Self time が大きいメソッド</em>です。</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>4 つのタブ</h2>
+        <div class="tbl-wrap">
+          <table>
+            <tbody>
+              <tr><td style="width:36%"><strong>Bottom Up</strong></td><td>重い<strong>メソッド</strong>から見る。<span style="color:var(--ui)">まずここ</span></td></tr>
+              <tr><td><strong>Call Tree</strong></td><td>重い<strong>経路</strong>を上から追う</td></tr>
+              <tr><td><strong>Method Table</strong></td><td>Self / Total の一覧。並べ替えできる</td></tr>
+              <tr><td><strong>Flame Chart</strong></td><td>Call Tree を絵にしたもの</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note good">
+          <p class="sm"><strong>最初にやること</strong><br>フィルタで<strong>自分のパッケージだけ</strong>に絞ります。絞らないと Flutter 本体のメソッドで埋まって、自分のコードが見えません。</p>
+        </div>
+        <p class="sm dim">サンプリングレートは Low 1,000Hz / Medium 4,000Hz（既定）/ High 20,000Hz。細かくするほど正確ですが、アプリ自体が重くなり、記録できる時間も短くなります。既定のままで十分です。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="デモ：sample_app" data-accent="ok"
+  data-notes="ここから実演。sample_app を profile モードで起動しておく。画面右上のスイッチひとつで問題版と改善版が切り替わるので、DevTools を開いたまま A/B できる。まず OFF でスクロールして赤を出し、Frame Analysis を読み、More debugging options で切り分け、最後にスイッチ ON で赤が消えるのを見せる。時間があれば②の画面も。">
+  <div class="eyebrow"><b>05</b><span>ツールの使い方</span></div>
+  <h1>やってみる</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+<pre><code>cd sample_app
+flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
+        <p class="sm">どちらのデモ画面も、<strong>右上のスイッチひとつ</strong>で「問題のある版」と「改善版」が切り替わります。画面遷移しないので、DevTools を開いたまま前後比較できます。</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th style="width:30%">デモ</th><th>赤くなる場所</th></tr></thead>
+            <tbody>
+              <tr><td><strong>① スクロールのジャンク</strong></td><td><span class="chip raster"><span class="swatch"></span>Raster</span> — <code>Opacity</code> / <code>saveLayer</code> / blur / 影</td></tr>
+              <tr><td><strong>② 操作が固まる</strong></td><td><span class="chip ui"><span class="swatch"></span>UI</span> — 重い同期処理でフレームが 1 枚も描けない</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>実演の手順</h2>
+        <ol class="tight sm">
+          <li>スイッチ <strong>OFF</strong> のまま、一覧を勢いよくスクロールする</li>
+          <li>DevTools ▸ Performance に<strong>赤いバー</strong>が出る</li>
+          <li>赤いバーを 1 本クリック → <strong>Frame Analysis</strong> を読む</li>
+          <li><strong>More debugging options</strong> で Opacity / Clip を OFF にして、犯人を絞る</li>
+          <li>アプリのスイッチを <strong>ON</strong> にして、同じ操作をもう一度</li>
+          <li>赤が消えたことを確認する</li>
+        </ol>
+        <div class="note good">
+          <p class="sm"><strong>②の見どころ</strong><br>画面中央の「描けたフレーム数」が、ボタンを押した瞬間に<em>止まります</em>。<code>Isolate.run()</code> に切り替えると止まらなくなります。</p>
+        </div>
+        <p class="sm dim">端末が速すぎて赤が出ないときは、<code>kTrackCount</code> と <code>kWorkIterations</code>（<code>lib/demo/janky_list_page.dart</code>）を増やしてください。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 6. クイズ ═══════════════ -->
+<section class="slide" data-sec="s6" data-title="クイズ（6問）" data-accent="ok"
+  data-notes="answers は全部これまでのスライドにある。選択肢をクリックすると正誤と解説が出る。参加者が多いなら挙手で答えてもらってからクリックする。1 問 90 秒くらいのペースで。">
+  <div class="eyebrow"><b>06</b><span>クイズ</span></div>
+  <h1>6 問、答え合わせ</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <p class="lead">答えはすべて、ここまでのスライドの中にあります。<br>選択肢をクリックすると、正解と解説が出ます。</p>
+        <div class="note">
+          <p class="sm">間違えても大丈夫です。むしろ<strong>間違えやすいところだけ</strong>を選んで出題しています。</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>出題範囲</h2>
+        <ul class="plain tight sm">
+          <li>Q1 — 計測を始める前に</li>
+          <li>Q2 — UI と Raster の読み分け</li>
+          <li>Q3 — リストの作り方</li>
+          <li>Q4 — よくある思い込み</li>
+          <li>Q5 — 数字の読み方</li>
+          <li>Q6 — 道具を開く順番</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s6" data-title="Q1 計測を始める前に" data-accent="ok"
+  data-notes="正解 B。debug が遅いのは仕様。ここで慌てて直しにいくと、存在しない問題を追いかけることになる。">
+  <div class="eyebrow"><b>06</b><span>クイズ</span><span>·</span><span>Q1 / 6</span></div>
+  <div class="body">
+    <div class="quiz-q">いつもの <code>flutter run</code> で動かしていたら、一覧のスクロールがカクついていました。まず何をしますか？</div>
+    <div class="cols-wide">
+      <div class="opts" data-quiz>
+        <button class="opt" type="button"><span class="mark">A</span><span>とりあえず <code>const</code> を付けて回る</span></button>
+        <button class="opt" type="button" data-correct="true"><span class="mark">B</span><span><code>--profile</code> を付けて起動し直し、測り直す</span></button>
+        <button class="opt" type="button"><span class="mark">C</span><span><code>ListView.builder</code> に置き換える</span></button>
+        <button class="opt" type="button"><span class="mark">D</span><span>端末を再起動して様子を見る</span></button>
+      </div>
+      <div class="answer">
+        <div class="note good">
+          <p><strong>答え — B</strong></p>
+          <p class="sm">debug モードは JIT で動き、assert やデバッグ用のチェックも走ります。<strong>遅いのは仕様</strong>です。profile モードで測り直すまで、そのカクつきは<em>本番には存在しないかもしれません</em>。</p>
+          <p class="sm dim">存在しない問題を追いかけるのが、いちばんもったいない時間の使い方です。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s6" data-title="Q2 UI と Raster の読み分け" data-accent="ok"
+  data-notes="正解 C。Raster スレッドでは Dart のコードは 1 行も動かない、をもう一度言う。ここを取り違えると、CPU Profiler を延々眺めて何も見つからない、という時間を過ごすことになる。">
+  <div class="eyebrow"><b>06</b><span>クイズ</span><span>·</span><span>Q2 / 6</span></div>
+  <div class="body">
+    <div class="quiz-q">DevTools を見たら、<strong>Raster</strong> の時間だけが予算を超えていました。最初に疑うのはどれですか？</div>
+    <div class="cols-wide">
+      <div class="opts" data-quiz>
+        <button class="opt" type="button"><span class="mark">A</span><span><code>build()</code> の中でやっている重い計算</span></button>
+        <button class="opt" type="button"><span class="mark">B</span><span><code>setState()</code> を呼んでいる位置が高すぎること</span></button>
+        <button class="opt" type="button" data-correct="true"><span class="mark">C</span><span><code>Opacity</code>・切り抜き・ぼかし・影の重ねすぎ</span></button>
+        <button class="opt" type="button"><span class="mark">D</span><span>API のレスポンスが遅いこと</span></button>
+      </div>
+      <div class="answer">
+        <div class="note good">
+          <p><strong>答え — C</strong></p>
+          <p class="sm">Raster スレッドでは、<em>Dart のコードは 1 行も動きません。</em>したがって A も B も無関係です。疑うのは <code>saveLayer()</code> を呼ばせる描画（<code>Opacity</code> / <code>ClipRRect(antiAliasWithSaveLayer)</code> / <code>BackdropFilter</code>）と、影・巨大な画像です。</p>
+          <p class="sm dim">ここを取り違えると、CPU Profiler を延々と眺めて何も見つからない時間を過ごすことになります。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s6" data-title="Q3 リストの作り方" data-accent="ok"
+  data-notes="正解 B。ListView(children:) は全件ぶんの Widget オブジェクトを作る。builder なら見えている行だけ。行の高さが一定なら itemExtent も付けるとレイアウト計算が減る。">
+  <div class="eyebrow"><b>06</b><span>クイズ</span><span>·</span><span>Q3 / 6</span></div>
+  <div class="body">
+    <div class="quiz-q">1000 件のリストを <code>ListView(children: items.map(...).toList())</code> で作りました。何が問題ですか？</div>
+    <div class="cols-wide">
+      <div class="opts" data-quiz>
+        <button class="opt" type="button"><span class="mark">A</span><span>スクロールが途中で止まってしまう</span></button>
+        <button class="opt" type="button" data-correct="true"><span class="mark">B</span><span>画面に見えていない行まで、毎回 1000 件ぶん作ってしまう</span></button>
+        <button class="opt" type="button"><span class="mark">C</span><span>メモリリークが起きる</span></button>
+        <button class="opt" type="button"><span class="mark">D</span><span>特に問題はない</span></button>
+      </div>
+      <div class="answer">
+        <div class="note good">
+          <p><strong>答え — B</strong></p>
+          <p class="sm"><code>ListView.builder</code> なら、<em>画面に見えている行だけ</em>を作ります。件数が 1000 でも 10000 でも、1 フレームのコストは変わりません。</p>
+          <p class="sm">行の高さが一定なら <code>itemExtent</code> も指定します。高さを測るためのレイアウト計算が丸ごと省けます。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s6" data-title="Q4 よくある思い込み" data-accent="ok"
+  data-notes="正解 B。const は『作り直さなくていい』という印であって、描画を軽くするものではない。Raster が赤いときに const を付けて回っても数字は 1ms も動かない。これが “測ってから直す” の一番分かりやすい例。">
+  <div class="eyebrow"><b>06</b><span>クイズ</span><span>·</span><span>Q4 / 6</span></div>
+  <div class="body">
+    <div class="quiz-q">「<code>const</code> を付ければ速くなる」— これは正しいですか？</div>
+    <div class="cols-wide">
+      <div class="opts" data-quiz>
+        <button class="opt" type="button"><span class="mark">A</span><span>正しい。付けられるところは全部付けるべき</span></button>
+        <button class="opt" type="button" data-correct="true"><span class="mark">B</span><span>rebuild を減らせることはあるが、描画の重さには効かない</span></button>
+        <button class="opt" type="button"><span class="mark">C</span><span>まったく意味がない</span></button>
+        <button class="opt" type="button"><span class="mark">D</span><span>release ビルドでは無視されるので効果はない</span></button>
+      </div>
+      <div class="answer">
+        <div class="note good">
+          <p><strong>答え — B</strong></p>
+          <p class="sm"><code>const</code> は「この Widget は作り直さなくていい」という印です。<strong>UI スレッド側の仕事を減らす</strong>効果はありますが、<em>描いたあとの絵が軽くなるわけではありません。</em></p>
+          <p class="sm">Raster が赤いときに <code>const</code> を付けて回っても、数字は 1ms も動きません。付けること自体は良い習慣ですが、<strong>ジャンクの対策としては測ってから</strong>です。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s6" data-title="Q5 数字の読み方" data-accent="ok"
+  data-notes="正解 B。平均は嘘をつく。人間はスムーズな 294 フレームを覚えず、はみ出した 6 フレームを覚える。だから見るのは超過フレーム数と worst。">
+  <div class="eyebrow"><b>06</b><span>クイズ</span><span>·</span><span>Q5 / 6</span></div>
+  <div class="body">
+    <div class="quiz-q">300 フレーム測ったところ、1 フレームの平均は <span class="metric">8.1ms</span> でした。この画面は大丈夫と言えますか？</div>
+    <div class="cols-wide">
+      <div class="opts" data-quiz>
+        <button class="opt" type="button"><span class="mark">A</span><span>予算の半分なので問題ない</span></button>
+        <button class="opt" type="button" data-correct="true"><span class="mark">B</span><span>平均では判断できない。超過したフレームの数と最悪値を見る</span></button>
+        <button class="opt" type="button"><span class="mark">C</span><span>平均が 16.7ms 以下なら、常に問題ない</span></button>
+        <button class="opt" type="button"><span class="mark">D</span><span>300 フレームでは足りないので、もっと長く測る</span></button>
+      </div>
+      <div class="answer">
+        <div class="note good">
+          <p><strong>答え — B</strong></p>
+          <p class="sm">平均 8.1ms でも、その中に <span class="metric" style="color:var(--jank)">92ms</span> が 6 回混ざっていれば、ユーザーは「重いアプリ」と言います。</p>
+          <p class="sm"><em>人はスムーズな 294 フレームを覚えず、はみ出した 6 フレームだけを覚えます。</em>見るのは <strong>超過フレーム数</strong> と <strong>worst</strong> です。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s6" data-title="Q6 道具を開く順番" data-accent="ok"
+  data-notes="正解 B。順番が大事。Frame Analysis → Enhance Tracing で Widget 名 → CPU Profiler でメソッド名。いきなり CPU Profiler を開くと情報が多すぎて迷子になる。">
+  <div class="eyebrow"><b>06</b><span>クイズ</span><span>·</span><span>Q6 / 6</span></div>
+  <div class="body">
+    <div class="quiz-q">UI スレッドが 16.7ms を超えていました。次に開くのはどこですか？</div>
+    <div class="cols-wide">
+      <div class="opts" data-quiz>
+        <button class="opt" type="button"><span class="mark">A</span><span>Memory ビューでリークを探す</span></button>
+        <button class="opt" type="button" data-correct="true"><span class="mark">B</span><span>そのフレームを選んで Frame Analysis。足りなければ CPU Profiler</span></button>
+        <button class="opt" type="button"><span class="mark">C</span><span>App Size ツールでアプリの大きさを調べる</span></button>
+        <button class="opt" type="button"><span class="mark">D</span><span>Network ビューで通信を確認する</span></button>
+      </div>
+      <div class="answer">
+        <div class="note good">
+          <p><strong>答え — B</strong></p>
+          <p class="sm">順番があります。<strong>Frame Analysis のヒント</strong> → 足りなければ <strong>Enhance Tracing</strong> で Widget 名 → それでも足りなければ <strong>CPU Profiler</strong> でメソッド名。</p>
+          <p class="sm dim">いきなり CPU Profiler を開くと、Flutter 本体のメソッドが大量に並んで迷子になります。粗いところから順に降りるのがコツです。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 7. まとめ ═══════════════ -->
+<section class="slide" data-sec="s7" data-title="明日やること" data-accent="ok"
+  data-notes="欲張らない。今日の到達点は『DevTools を開いて赤いバーを見つけられる』まで。3 つだけやって、それ以上は今日はしなくていい、とはっきり言って終わる。時間が余っていれば +α へ。">
+  <div class="eyebrow"><b>07</b><span>まとめ</span></div>
+  <h1>明日やることは、3 つだけ</h1>
+  <div class="body">
+    <div class="cols3">
+      <div class="card" style="border-top:0.28cqw solid var(--ui)">
+        <h3>01</h3>
+        <h2>開く</h2>
+        <p class="sm">自分のアプリを <code>flutter run --profile</code> で起動して、DevTools を開く。それだけ。</p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--raster)">
+        <h3>02</h3>
+        <h2>触る</h2>
+        <p class="sm">いちばんよく使う画面で 30 秒スクロールする。Flutter Frames に赤が出るかを見る。</p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--ok)">
+        <h3>03</h3>
+        <h2>読む</h2>
+        <p class="sm">赤が出たら 1 本クリックして、Frame Analysis を読む。<strong>直さなくていい。</strong></p>
+      </div>
+    </div>
+    <div class="note good">
+      <p><em>今日の到達点は「直せる」ではなく「見つけられる」です。</em>見つけられれば、直し方は調べられます。見つけられないうちは、何を調べればいいかも分かりません。</p>
+    </div>
+    <p class="sm dim">この先は <span class="kbd">→</span> で「+α」へ。Memory / App Size / 自分で計測点を打つ / よくある症状と打ち手の早見表があります。</p>
+  </div>
+</section>
+
+<!-- ═══════════════ +α ═══════════════ -->
+<section class="slide" data-sec="bonus" data-title="+α ここからおまけ" data-accent="raster"
+  data-notes="時間が余ったとき用。全部やる必要はなく、参加者の関心に合わせて 2〜3 枚だけ拾えばよい。質問が出た項目に飛ぶのがいちばん効く。g キーで一覧を開くと飛びやすい。">
+  <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
+  <h1>ここからは、おまけ</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="stack">
+        <h2>もっと測る</h2>
+        <ul class="plain tight sm">
+          <li><strong>Memory</strong> — 画面を閉じたのに減らない、を見つける</li>
+          <li><strong>App Size</strong> — アプリが何で太っているか</li>
+          <li><strong>自分で計測点を打つ</strong> — <code>Timeline.startSync</code></li>
+          <li><strong>本番で測り続ける</strong> — <code>addTimingsCallback</code></li>
+        </ul>
+      </div>
+      <div class="stack">
+        <h2>よく効く直し方</h2>
+        <ul class="plain tight sm">
+          <li><strong>重い処理を追い出す</strong> — <code>Isolate.run()</code></li>
+          <li><strong>再描画を切り離す</strong> — <code>RepaintBoundary</code></li>
+          <li><strong>画像を小さくして読む</strong> — <code>cacheWidth</code></li>
+          <li><strong>症状から引く早見表</strong></li>
+        </ul>
+      </div>
+    </div>
+    <div class="note warm">
+      <p class="sm">全部やる必要はありません。気になったところだけ拾ってください。<span class="kbd">g</span> で一覧が開くので、そこから飛べます。</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="Memory — 減らないものを見つける" data-accent="raster"
+  data-notes="時間ではなくメモリの話。DevTools の Memory ▸ Diff が実務では一番使える。開く前・開いて閉じたあとの 2 枚を撮って差分を見る。増えたままのクラスが出たら、そのクラスの参照を誰かが持ち続けている。">
+  <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
+  <h1>Memory — 「閉じたのに減らない」を見つける</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <h2>Heap Snapshot と Diff の使い方</h2>
+        <ol class="tight sm">
+          <li>DevTools ▸ <strong>Memory</strong> を開く</li>
+          <li>問題の画面を<strong>開く前</strong>にスナップショットを 1 枚撮る</li>
+          <li>画面を開いて、閉じる（これを 2〜3 回）</li>
+          <li>もう 1 枚スナップショットを撮る</li>
+          <li><strong>Diff</strong> タブで 2 枚を比べる</li>
+        </ol>
+        <div class="note">
+          <p class="sm">開いて閉じたのに<strong>インスタンス数が増えたまま</strong>のクラスがあれば、誰かがそのオブジェクトを掴んだままです。</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>よくある原因</h2>
+        <ul class="plain tight sm">
+          <li><code>StreamSubscription</code> を <code>cancel()</code> していない</li>
+          <li><code>AnimationController</code> / <code>TextEditingController</code> を <code>dispose()</code> していない</li>
+          <li>グローバルな <code>Map</code> や <code>List</code> に入れっぱなし</li>
+          <li>コールバックの中で <code>context</code> や State を掴んでいる</li>
+        </ul>
+        <div class="note good">
+          <p class="sm">Flutter には <strong>leak_tracker</strong> という仕組みもあり、テストの中で <code>dispose</code> 漏れを自動検出できます。まずは Diff で「増えているか」を確認するのが手軽です。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="App Size — 何で太ったか" data-accent="raster"
+  data-notes="リリース前にたまに見るやつ。--analyze-size を付けてビルドすると JSON が出て、DevTools の App Size ツールで開ける。たいてい画像かフォントか、思ったより大きい依存パッケージが出てくる。">
+  <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
+  <h1>App Size — 何がアプリを太らせたか</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+<pre><code><span class="c"># Android</span>
+flutter build apk <span class="s">--analyze-size</span> \
+  --target-platform android-arm64
+
+<span class="c"># iOS</span>
+flutter build ipa <span class="s">--analyze-size</span></code></pre>
+        <p class="sm">ビルドが終わると解析用の JSON が出力され、そのまま DevTools の <strong>App Size</strong> ツールで開けます。</p>
+        <div class="note">
+          <p class="sm"><strong>Diff</strong> タブで 2 つのビルドを比べられます。「このリリースで 4MB 増えたのは何のせいか」を追うときに使います。</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>だいたい犯人はこの 3 つ</h2>
+        <ul class="plain tight sm">
+          <li><strong>画像アセット</strong> — 4K の PNG がそのまま入っている、@3x だけあれば十分なのに全解像度入れている</li>
+          <li><strong>フォント</strong> — 全ウェイト・全字形を同梱している</li>
+          <li><strong>依存パッケージ</strong> — 小さな機能のために大きなライブラリを入れている</li>
+        </ul>
+        <p class="sm dim">サイズはユーザーのダウンロード率とインストール後の削除率に効きます。ただし毎回見るものではなく、リリース前にたまに確認する程度で十分です。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="自分で計測点を打つ" data-accent="raster"
+  data-notes="DevTools が出してくれる情報で足りないときは、自分で名前を付けて計測する。sample_app の heavy_work_page に実際に入れてあるので、Timeline Events に aggregate という帯が出るのを見せられる。非同期区間は TimelineTask を使うのがポイント。">
+  <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
+  <h1>自分のコードに、名前を付けて測る</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="stack">
+        <h3>同期の区間</h3>
+<pre><code><span class="k">import</span> <span class="s">'dart:developer'</span> <span class="k">as</span> developer;
+
+developer.Timeline.startSync(<span class="s">'aggregate'</span>);
+<span class="k">final</span> result = aggregate(records);
+developer.Timeline.finishSync();</code></pre>
+        <h3 style="margin-top:1cqw">非同期の区間</h3>
+<pre><code><span class="c">// start と finish が別フレームになるので</span>
+<span class="c">// TimelineTask を使う</span>
+<span class="k">final</span> task = developer.TimelineTask()
+  ..start(<span class="s">'aggregate (Isolate.run)'</span>);
+<span class="k">final</span> result = <span class="k">await</span> Isolate.run(job);
+task.finish();</code></pre>
+      </div>
+      <div class="stack">
+        <h2>どこに出るのか</h2>
+        <p class="sm">DevTools ▸ Performance ▸ <strong>Timeline Events</strong> に、付けた名前の帯がそのまま出ます。横幅がかかった時間です。</p>
+        <div class="note good">
+          <p class="sm"><code>sample_app</code> の <code>lib/demo/heavy_work_page.dart</code> に実際に入れてあります。「集計する」を押したあと Timeline Events を見ると、<code>aggregate (main isolate)</code> という帯が見えます。</p>
+        </div>
+        <div class="note bad">
+          <p class="sm"><strong>打ちすぎ注意。</strong>1 フレームに何百個も打つと、記録すること自体が重くなって数字が狂います。知りたい区間にだけ、粗く打ちます。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="本番で測り続ける" data-accent="raster"
+  data-notes="手元で測れるのは自分の端末だけ。実際のユーザーの端末で何が起きているかは、これを仕込まないと分からない。集めた値は分析基盤に送る。送りすぎるとそれ自体が負荷になるので、間引くこと。">
+  <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
+  <h1>ユーザーの端末で、測り続ける</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+<pre><code><span class="k">import</span> <span class="s">'package:flutter/scheduler.dart'</span>;
+
+SchedulerBinding.instance.addTimingsCallback((timings) {
+  <span class="k">for</span> (<span class="k">final</span> t <span class="k">in</span> timings) {
+    <span class="k">final</span> build  = t.buildDuration.inMicroseconds / <span class="s">1000</span>;
+    <span class="k">final</span> raster = t.rasterDuration.inMicroseconds / <span class="s">1000</span>;
+    <span class="k">if</span> (build &gt; <span class="s">16.7</span> || raster &gt; <span class="s">16.7</span>) {
+      <span class="c">// 分析基盤へ送る（間引くこと）</span>
+      reportJank(build, raster);
+    }
+  }
+});</code></pre>
+        <p class="sm">描き終わったフレームの情報が、まとめてコールバックで渡ってきます。<code>buildDuration</code> が UI 側、<code>rasterDuration</code> が Raster 側です。</p>
+      </div>
+      <div class="stack">
+        <h2>なぜ必要か</h2>
+        <p class="sm">手元で測れるのは<strong>自分の端末だけ</strong>です。3 年前の端末で、通信が遅くて、写真が 5000 枚入っているユーザーの環境は、開発機では再現できません。</p>
+        <div class="note bad">
+          <p class="sm"><strong>送りすぎないこと。</strong>全フレームを送ると、送信処理そのものがジャンクの原因になります。閾値を超えたフレームだけ、しかも間引いて送ります。</p>
+        </div>
+        <div class="note">
+          <p class="sm">まずは「超過フレームの割合」だけを画面ごとに集めるところから始めると、改善の効果が数字で見えるようになります。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="重い処理を追い出す" data-accent="raster"
+  data-notes="UI スレッドが赤いときの一番強い打ち手。ただし何でも isolate に投げればいいわけではなく、データの受け渡しにコストがある。目安は数十 ms を超える処理から。sample_app のデモ②がそのまま実例。">
+  <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
+  <h1>重い処理は、UI スレッドから追い出す</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="stack">
+        <h3>Before — UI スレッドが止まる</h3>
+<pre><code><span class="k">final</span> data = jsonDecode(hugeJson);
+<span class="k">final</span> result = aggregate(data);
+setState(() =&gt; _result = result);</code></pre>
+        <h3 style="margin-top:1cqw">After — 別の isolate へ</h3>
+<pre><code><span class="k">import</span> <span class="s">'dart:isolate'</span>;
+
+<span class="c">// job はトップレベル関数にしておく</span>
+<span class="k">final</span> result = <span class="k">await</span> Isolate.run(
+  () =&gt; aggregate(jsonDecode(hugeJson)),
+);
+setState(() =&gt; _result = result);</code></pre>
+        <p class="sm dim"><code>compute()</code> も同じことをする、もう少し古い書き方です。今から書くなら <code>Isolate.run()</code> で十分です。</p>
+      </div>
+      <div class="stack">
+        <h2>使い分けの目安</h2>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th style="width:40%">処理の重さ</th><th>やること</th></tr></thead>
+            <tbody>
+              <tr><td>数 ms</td><td>そのままでよい</td></tr>
+              <tr><td>10〜数十 ms</td><td>結果をキャッシュする / <code>build</code> から出す</td></tr>
+              <tr><td>数十 ms 以上</td><td><strong><code>Isolate.run()</code> へ</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note bad">
+          <p class="sm"><strong>何でも投げればいいわけではありません。</strong>isolate との間はデータをコピーして渡すので、その受け渡し自体にコストがあります。小さい処理を投げると、かえって遅くなります。</p>
+        </div>
+        <div class="note good">
+          <p class="sm"><code>sample_app</code> のデモ②が、まさにこの Before / After をスイッチで切り替えられるようになっています。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="RepaintBoundary" data-accent="raster"
+  data-notes="効くときは劇的に効くが、使いすぎると GPU メモリを食って逆効果。まずは debugRepaintRainbowEnabled で『本当に無駄な再描画が起きているか』を確認してから入れる。測らずに撒くのは典型的な逆効果パターン。">
+  <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
+  <h1>RepaintBoundary — 使い所を測ってから</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <h2>何をするものか</h2>
+        <p class="sm">囲んだ部分を<strong>独立したレイヤー</strong>に切り出します。まわりが再描画されても、そこは描き直されなくなります。</p>
+        <div class="note good">
+          <p class="sm"><strong>効く場面</strong><br>止まっている複雑な絵（地図・グラフ・長いリストの行）の隣で、何かがずっと動いている。動いているものだけ描き直せばいいのに、全体が描き直されている。</p>
+        </div>
+        <div class="note bad">
+          <p class="sm"><strong>効かない・逆効果な場面</strong><br>レイヤーを 1 枚増やすたびに GPU メモリを消費します。中身が毎フレーム変わる場所に付けても、描き直しは減りません。<em>「とりあえず全部に付ける」は逆効果です。</em></p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>入れる前に確認する</h2>
+<pre><code><span class="k">import</span> <span class="s">'package:flutter/rendering.dart'</span>;
+
+<span class="k">void</span> main() {
+  debugRepaintRainbowEnabled = <span class="k">true</span>;
+  runApp(<span class="k">const</span> MyApp());
+}</code></pre>
+        <p class="sm">再描画された領域が、フレームごとに色の変わる枠で囲まれます。<strong>動いていないのに毎フレーム色が変わっている場所</strong>が、候補です。</p>
+        <div class="note">
+          <p class="sm">debug モード専用です。確認が終わったら必ず外してください。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="画像は小さくして読む" data-accent="raster"
+  data-notes="Raster が赤いのに Clip も Opacity も無関係だったとき、たいていこれ。4000px の写真を 100px のサムネイルで表示すると、デコードもメモリも 4000px ぶん払っている。cacheWidth を指定するだけで解決することが多い。">
+  <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
+  <h1>画像は「表示する大きさ」で読み込む</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <div class="note bad">
+          <p><strong>よくある状態</strong></p>
+          <p class="sm">4000×3000 の写真を、100×100 のサムネイルとして表示している。<br>→ デコードもメモリも、<strong>4000×3000 ぶん</strong>払っています。1 枚で約 48MB です。</p>
+        </div>
+<pre><code><span class="c">// 表示する大きさを指定して読み込む</span>
+Image.network(
+  url,
+  <span class="s">cacheWidth</span>: <span class="s">200</span>,   <span class="c">// 論理px × devicePixelRatio 程度</span>
+  width: <span class="s">100</span>,
+  height: <span class="s">100</span>,
+  fit: BoxFit.cover,
+)</code></pre>
+        <p class="sm"><code>ImageProvider</code> を直接使う場合は <code>ResizeImage(provider, width: 200)</code> で包みます。</p>
+      </div>
+      <div class="stack">
+        <h2>合わせて確認すること</h2>
+        <ul class="plain tight sm">
+          <li>アセットの画像が、実際に必要な解像度になっているか</li>
+          <li>リストの行に、毎回別の <code>ImageProvider</code> を作っていないか（キャッシュが効かなくなります）</li>
+          <li>プレースホルダに <code>Opacity</code> を使っていないか（<code>FadeInImage</code> を使う）</li>
+        </ul>
+        <div class="note">
+          <p class="sm">Raster が赤いのに、Clip も Opacity も blur も無関係だった — というとき、<em>だいたい画像です。</em></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="症状から引く早見表" data-accent="raster"
+  data-notes="持ち帰り用の 1 枚。印刷して机に貼れる。左から順に読めば、次にやることが決まる。この 1 枚だけ配っても価値がある。">
+  <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
+  <h1>症状から引く早見表</h1>
+  <div class="body">
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:24%">症状</th><th style="width:12%">赤いのは</th><th style="width:30%">疑うところ</th><th style="width:34%">打ち手</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>スクロールがずっとカクつく</td>
+            <td><span class="chip raster"><span class="swatch"></span>Raster</span></td>
+            <td>行ごとの <code>Opacity</code> / 切り抜き / 影 / blur</td>
+            <td>More debugging options で切り分け → 角丸は <code>borderRadius</code>、半透明は色の alpha</td>
+          </tr>
+          <tr>
+            <td>スクロールがずっとカクつく</td>
+            <td><span class="chip ui"><span class="swatch"></span>UI</span></td>
+            <td><code>build()</code> の中の計算 / 全件を一度に生成</td>
+            <td><code>ListView.builder</code> + <code>itemExtent</code>、計算は <code>initState</code> へ</td>
+          </tr>
+          <tr>
+            <td>ボタンを押すと数百 ms 固まる</td>
+            <td><span class="chip ui"><span class="swatch"></span>UI</span></td>
+            <td>重い同期処理（パース・集計・暗号化）</td>
+            <td><code>Isolate.run()</code> へ逃がす</td>
+          </tr>
+          <tr>
+            <td>画像の多い画面だけ重い</td>
+            <td><span class="chip raster"><span class="swatch"></span>Raster</span></td>
+            <td>表示サイズより大きい画像</td>
+            <td><code>cacheWidth</code> / <code>cacheHeight</code> / <code>ResizeImage</code></td>
+          </tr>
+          <tr>
+            <td>入力するたびに画面全体が固まる</td>
+            <td><span class="chip ui"><span class="swatch"></span>UI</span></td>
+            <td><code>setState()</code> を呼ぶ位置が高すぎる</td>
+            <td>変わる部分だけを小さな Widget に切り出す</td>
+          </tr>
+          <tr>
+            <td>画面を開閉するうちに落ちる</td>
+            <td><span class="chip jank"><span class="swatch"></span>—</span></td>
+            <td><code>dispose()</code> / <code>cancel()</code> 漏れ</td>
+            <td>Memory ▸ Diff で増えているクラスを特定する</td>
+          </tr>
+          <tr>
+            <td>アニメーションの初回だけカクつく</td>
+            <td><span class="chip jank"><span class="swatch"></span>—</span></td>
+            <td>（Impeller 既定の今は、まず別の原因を疑う）</td>
+            <td>初回に走る重い処理・画像のデコードを探す</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="参考リンク" data-accent="raster"
+  data-notes="公式ドキュメントだけを挙げてある。ブログ記事は Impeller 以前のものが多く、そのまま真似すると古い対策をすることになる、と最後に一言添える。">
+  <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
+  <h1>この先を調べるときは</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="stack">
+        <h2>公式ドキュメント</h2>
+        <ul class="plain tight sm">
+          <li><strong>パフォーマンスの診断</strong><br><code>docs.flutter.dev/perf/ui-performance</code></li>
+          <li><strong>Performance ビュー</strong><br><code>docs.flutter.dev/tools/devtools/performance</code></li>
+          <li><strong>CPU Profiler</strong><br><code>docs.flutter.dev/tools/devtools/cpu-profiler</code></li>
+          <li><strong>Memory ビュー</strong><br><code>docs.flutter.dev/tools/devtools/memory</code></li>
+          <li><strong>パフォーマンスのベストプラクティス</strong><br><code>docs.flutter.dev/perf/best-practices</code></li>
+          <li><strong>アプリサイズの計測</strong><br><code>docs.flutter.dev/perf/app-size</code></li>
+        </ul>
+      </div>
+      <div class="stack">
+        <h2>この資料のリポジトリ</h2>
+        <ul class="plain tight sm">
+          <li><code>slides/index.html</code> — このスライド</li>
+          <li><code>sample_app/</code> — デモアプリ</li>
+          <li><code>sample_app/README.md</code> — 実演の手順と、端末に合わせた調整方法</li>
+        </ul>
+        <div class="note bad">
+          <p class="sm"><strong>ブログ記事を読むときの注意</strong></p>
+          <p class="sm">パフォーマンス関連の記事は、Impeller 以前（Skia 時代）に書かれたものが大量に残っています。<code>--purge-persistent-cache</code> や SkSL の warm-up が出てきたら、その記事の前提は今と違います。</p>
+        </div>
+        <p class="sm dim">迷ったら、まず公式ドキュメントの日付を確認してください。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div><!-- /stage -->
+
+<nav class="hud" aria-label="スライド操作">
+  <div class="hud-section" id="hudSection"></div>
+  <div class="ticks" id="ticks" aria-label="スライドの位置"></div>
+  <div class="hud-right">
+    <span class="counter"><span id="cur">1</span> / <span id="total">–</span></span>
+    <button type="button" id="btnGrid" title="スライド一覧 (g)">一覧</button>
+    <button type="button" id="btnNotes" aria-pressed="false" title="発表者ノート (p)">ノート</button>
+    <button type="button" id="btnTheme" title="配色を切り替える">配色</button>
+    <button type="button" id="btnHelp" title="ショートカット (?)">?</button>
+  </div>
+</nav>
+</div><!-- /deck -->
+
+<aside class="notes" id="notes" aria-live="polite">
+  <h4>発表者ノート</h4>
+  <div id="notesBody"></div>
+</aside>
+
+<div class="sheet" id="navSheet" role="dialog" aria-modal="true" aria-label="スライド一覧">
+  <button type="button" class="sheet-close mini" data-close-sheet>閉じる (Esc)</button>
+  <h1 style="font-size:1.4rem;margin-bottom:1.2rem">スライド一覧</h1>
+  <div id="navBody"></div>
+</div>
+
+<div class="sheet" id="helpSheet" role="dialog" aria-modal="true" aria-label="キーボードショートカット">
+  <button type="button" class="sheet-close mini" data-close-sheet>閉じる (Esc)</button>
+  <h1 style="font-size:1.4rem;margin-bottom:1.2rem">キーボードショートカット</h1>
+  <div class="help-grid">
+    <div class="help-row"><span class="k">→ / Space / ↓</span><span>次のスライド</span></div>
+    <div class="help-row"><span class="k">← / ↑</span><span>前のスライド</span></div>
+    <div class="help-row"><span class="k">Home / End</span><span>最初 / 最後へ</span></div>
+    <div class="help-row"><span class="k">g</span><span>スライド一覧を開く</span></div>
+    <div class="help-row"><span class="k">p</span><span>発表者ノートの表示切替</span></div>
+    <div class="help-row"><span class="k">f</span><span>フルスクリーン</span></div>
+    <div class="help-row"><span class="k">t</span><span>配色（ライト / ダーク）</span></div>
+    <div class="help-row"><span class="k">?</span><span>この一覧</span></div>
+    <div class="help-row"><span class="k">Esc</span><span>開いているものを閉じる</span></div>
+    <div class="help-row"><span class="k">1 … 9</span><span>そのセクションの先頭へ</span></div>
+  </div>
+  <p style="margin-top:1.4rem;font-size:.85rem;color:var(--muted);max-width:56ch">
+    印刷（⌘P / Ctrl+P）すると 1 スライド 1 ページの配布資料になります。クイズの解答も展開された状態で出力されます。
+  </p>
+</div>
+
+<style>
+  .mini {
+    font-family: var(--font-mono); font-size: .7rem; letter-spacing: .06em;
+    color: var(--muted); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 4px;
+    padding: .4rem .7rem; cursor: pointer;
+  }
+  .mini:hover { color: var(--ui); border-color: var(--ui); }
+</style>
+
+<script>
+(function () {
+  'use strict';
+
+  var SECTIONS = {
+    cover: '表紙',
+    s1:    '01 · profiling とは',
+    s2:    '02 · なぜやるのか',
+    s3:    '03 · 1フレームの仕組み',
+    s4:    '04 · 進め方',
+    s5:    '05 · ツールの使い方',
+    s6:    '06 · クイズ',
+    s7:    '07 · まとめ',
+    bonus: '+α · 時間が余ったら'
+  };
+  var SECTION_ORDER = ['cover', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 'bonus'];
+
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var stage = document.getElementById('stage');
+  var ticksEl = document.getElementById('ticks');
+  var hudSection = document.getElementById('hudSection');
+  var curEl = document.getElementById('cur');
+  var notes = document.getElementById('notes');
+  var notesBody = document.getElementById('notesBody');
+  var navSheet = document.getElementById('navSheet');
+  var helpSheet = document.getElementById('helpSheet');
+  var index = 0;
+  var ticks = [];
+
+  document.getElementById('total').textContent = String(slides.length);
+
+  /* ---------- ticks (bottom timeline) ---------- */
+  slides.forEach(function (slide, i) {
+    var sec = slide.dataset.sec;
+    var t = document.createElement('button');
+    t.type = 'button';
+    t.className = 'tick';
+    t.dataset.sec = sec === 'bonus' ? 'bonus' : sec;
+    if (i > 0 && slides[i - 1].dataset.sec !== sec) t.classList.add('boundary');
+    t.title = (SECTIONS[sec] || '') + ' — ' + (slide.dataset.title || '');
+    t.setAttribute('aria-label', (i + 1) + '枚目: ' + (slide.dataset.title || ''));
+    t.addEventListener('click', function () { go(i); });
+    ticksEl.appendChild(t);
+    ticks.push(t);
+  });
+
+  /* ---------- navigator ---------- */
+  (function buildNav() {
+    var body = document.getElementById('navBody');
+    SECTION_ORDER.forEach(function (sec) {
+      var members = slides.filter(function (s) { return s.dataset.sec === sec; });
+      if (!members.length) return;
+      var group = document.createElement('section');
+      group.className = 'nav-group';
+      var title = document.createElement('div');
+      title.className = 'nav-group-title';
+      title.innerHTML = '<span>' + SECTIONS[sec] + '</span><span>' + members.length + ' 枚</span>';
+      group.appendChild(title);
+      var grid = document.createElement('div');
+      grid.className = 'nav-grid';
+      members.forEach(function (slide) {
+        var i = slides.indexOf(slide);
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'nav-item';
+        b.dataset.sec = sec === 'bonus' ? 'bonus' : sec;
+        b.dataset.index = String(i);
+        b.innerHTML = '<span class="n">' + String(i + 1).padStart(2, '0') + '</span><span>' +
+          (slide.dataset.title || '') + '</span>';
+        b.addEventListener('click', function () { closeSheets(); go(i); });
+        grid.appendChild(b);
+      });
+      group.appendChild(grid);
+      body.appendChild(group);
+    });
+  })();
+  var navItems = Array.prototype.slice.call(document.querySelectorAll('.nav-item'));
+
+  /* ---------- navigation ---------- */
+  function go(i) {
+    index = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach(function (s, n) { s.classList.toggle('is-active', n === index); });
+    ticks.forEach(function (t, n) {
+      t.classList.toggle('now', n === index);
+      t.classList.toggle('seen', n < index);
+    });
+    navItems.forEach(function (b) { b.classList.toggle('now', +b.dataset.index === index); });
+    var slide = slides[index];
+    hudSection.innerHTML = '<b>' + (SECTIONS[slide.dataset.sec] || '') + '</b>';
+    curEl.textContent = String(index + 1);
+    notesBody.textContent = slide.dataset.notes || '（このスライドにノートはありません）';
+    if (location.hash !== '#' + (index + 1)) {
+      history.replaceState(null, '', '#' + (index + 1));
+    }
+    charts.forEach(function (c) { c.setActive(slide.contains(c.canvas)); });
+  }
+  function next() { go(index + 1); }
+  function prev() { go(index - 1); }
+
+  function sectionStart(n) {
+    var sec = SECTION_ORDER[n];
+    for (var i = 0; i < slides.length; i++) {
+      if (slides[i].dataset.sec === sec) return i;
+    }
+    return -1;
+  }
+
+  /* ---------- overlays ---------- */
+  function sheetOpen(el) {
+    closeSheets();
+    el.classList.add('is-open');
+  }
+  function closeSheets() {
+    navSheet.classList.remove('is-open');
+    helpSheet.classList.remove('is-open');
+  }
+  function anySheetOpen() {
+    return navSheet.classList.contains('is-open') || helpSheet.classList.contains('is-open');
+  }
+  function toggleNotes() {
+    var open = notes.classList.toggle('is-open');
+    document.getElementById('btnNotes').setAttribute('aria-pressed', String(open));
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('[data-close-sheet]'), function (b) {
+    b.addEventListener('click', closeSheets);
+  });
+  document.getElementById('btnGrid').addEventListener('click', function () { sheetOpen(navSheet); });
+  document.getElementById('btnHelp').addEventListener('click', function () { sheetOpen(helpSheet); });
+  document.getElementById('btnNotes').addEventListener('click', toggleNotes);
+
+  /* ---------- theme ---------- */
+  function toggleTheme() {
+    var root = document.documentElement;
+    var explicit = root.getAttribute('data-theme');
+    var dark = explicit
+      ? explicit === 'dark'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    charts.forEach(function (c) { c.redraw(); });
+  }
+  document.getElementById('btnTheme').addEventListener('click', toggleTheme);
+
+  /* ---------- keyboard ---------- */
+  document.addEventListener('keydown', function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    var k = e.key;
+    if (k === 'Escape') {
+      if (anySheetOpen()) { closeSheets(); e.preventDefault(); }
+      else if (notes.classList.contains('is-open')) { toggleNotes(); e.preventDefault(); }
+      return;
+    }
+    if (anySheetOpen() && k !== 'g' && k !== '?') return;
+    if (k === 'ArrowRight' || k === 'ArrowDown' || k === ' ' || k === 'PageDown') { next(); e.preventDefault(); }
+    else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp') { prev(); e.preventDefault(); }
+    else if (k === 'Home') { go(0); e.preventDefault(); }
+    else if (k === 'End') { go(slides.length - 1); e.preventDefault(); }
+    else if (k === 'g' || k === 'G') { anySheetOpen() ? closeSheets() : sheetOpen(navSheet); e.preventDefault(); }
+    else if (k === 'p' || k === 'P') { toggleNotes(); e.preventDefault(); }
+    else if (k === 't' || k === 'T') { toggleTheme(); e.preventDefault(); }
+    else if (k === '?') { anySheetOpen() ? closeSheets() : sheetOpen(helpSheet); e.preventDefault(); }
+    else if (k === 'f' || k === 'F') {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+      e.preventDefault();
+    } else if (k >= '1' && k <= '9') {
+      var at = sectionStart(+k - 1);
+      if (at >= 0) { go(at); e.preventDefault(); }
+    }
+  });
+
+  /* click on the stage advances, except on interactive elements */
+  stage.addEventListener('click', function (e) {
+    if (e.target.closest('button, a, pre, table, input, select, .chart, figure, svg, .opts, .answer')) return;
+    next();
+  });
+
+  window.addEventListener('hashchange', function () {
+    var n = parseInt(location.hash.slice(1), 10);
+    if (!isNaN(n) && n - 1 !== index) go(n - 1);
+  });
+
+  /* ---------- quiz ---------- */
+  Array.prototype.forEach.call(document.querySelectorAll('[data-quiz]'), function (group) {
+    var slide = group.closest('.slide');
+    var answer = slide ? slide.querySelector('.answer') : null;
+    var opts = Array.prototype.slice.call(group.querySelectorAll('.opt'));
+    opts.forEach(function (opt) {
+      opt.addEventListener('click', function () {
+        if (group.dataset.done === '1') return;
+        group.dataset.done = '1';
+        opts.forEach(function (o) {
+          if (o.dataset.correct === 'true') o.dataset.state = 'correct';
+          else if (o === opt) o.dataset.state = 'wrong';
+          else o.dataset.state = 'dim';
+        });
+        if (answer) answer.classList.add('is-open');
+      });
+    });
+  });
+
+  /* ---------- frame chart ---------- */
+  var BUDGET = 16.7;          /* 60fps の 1 フレーム予算 (ms) */
+  var MAXMS = 33.4;           /* 縦軸の上限。予算線がちょうど半分の高さに来る */
+  var FRAMES = 58;
+  var charts = [];
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var MONO = '"JetBrains Mono", ui-monospace, Menlo, monospace';
+
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
+  }
+
+  function makeChart(canvas) {
+    var ctx = canvas.getContext('2d');
+    var wrap = canvas.parentElement;
+    var slide = canvas.closest('.slide');
+    var readout = slide ? slide.querySelector('[data-readout]') : null;
+    var toggle = slide ? slide.querySelector('[data-load-toggle]') : null;
+    var spike = parseFloat(canvas.dataset.jank || '0.05');
+    var ui = [], raster = [];
+    var heavy = false, active = false;
+    var w = 0, h = 0, dpr = 1;
+
+    function rnd(a, b) { return a + Math.random() * (b - a); }
+
+    function push() {
+      var u, r;
+      if (heavy) {
+        u = Math.random() < 0.2 ? rnd(17, 27) : rnd(6, 12);
+        r = Math.random() < 0.6 ? rnd(19, 41) : rnd(9, 15.5);
+      } else {
+        u = Math.random() < spike * 0.6 ? rnd(17, 25) : rnd(3.2, 7.4);
+        r = Math.random() < spike ? rnd(18, 29) : rnd(4.2, 9.4);
+      }
+      ui.push(u); raster.push(r);
+      while (ui.length > FRAMES) { ui.shift(); raster.shift(); }
+    }
+
+    function refill() { ui = []; raster = []; for (var i = 0; i < FRAMES; i++) push(); }
+
+    function bar(x, y, bw, bh, r) {
+      r = Math.min(r, bw / 2, bh);
+      ctx.beginPath();
+      ctx.moveTo(x, y + bh);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.lineTo(x + bw - r, y);
+      ctx.quadraticCurveTo(x + bw, y, x + bw, y + r);
+      ctx.lineTo(x + bw, y + bh);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawRow(values, y, rowH, color, jank, label, showAxis, inkDim) {
+      var base = y + rowH;
+      var slot = w / FRAMES;
+      var bw = Math.max(1.5, slot - 2);
+      for (var i = 0; i < values.length; i++) {
+        var v = values[i];
+        var bh = Math.max(1, Math.min(v, MAXMS) / MAXMS * rowH);
+        ctx.fillStyle = v > BUDGET ? jank : color;
+        bar(i * slot, base - bh, bw, bh, 2.5);
+      }
+      var by = base - (BUDGET / MAXMS) * rowH;
+      ctx.save();
+      ctx.strokeStyle = inkDim;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(0, Math.round(by) + 0.5);
+      ctx.lineTo(w, Math.round(by) + 0.5);
+      ctx.stroke();
+      ctx.restore();
+      ctx.font = '700 10px ' + MONO;
+      ctx.fillStyle = color;
+      ctx.textAlign = 'left';
+      ctx.fillText(label, 2, y + 10);
+      if (showAxis) {
+        ctx.font = '400 9px ' + MONO;
+        ctx.fillStyle = inkDim;
+        ctx.textAlign = 'right';
+        ctx.fillText('16.7 ms', w - 2, by - 3);
+      }
+    }
+
+    function draw() {
+      if (!w || !h) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      var gap = 8, pad = 2;
+      var rowH = (h - pad * 2 - gap) / 2;
+      var cUi = cssVar('--ui'), cRaster = cssVar('--raster'), cJank = cssVar('--jank');
+      var dim = cssVar('--muted');
+      drawRow(raster, pad, rowH, cRaster, cJank, 'RASTER', true, dim);
+      drawRow(ui, pad + rowH + gap, rowH, cUi, cJank, 'UI', false, dim);
+      if (readout) {
+        var over = function (a) { return a.filter(function (v) { return v > BUDGET; }).length; };
+        var worst = Math.max(Math.max.apply(null, ui), Math.max.apply(null, raster));
+        var uo = over(ui), ro = over(raster);
+        readout.innerHTML =
+          '直近 ' + FRAMES + ' フレーム · 予算超過 UI ' + (uo ? '<b>' + uo + '</b>' : '0') +
+          ' / Raster ' + (ro ? '<b>' + ro + '</b>' : '0') +
+          ' · worst ' + (worst > BUDGET ? '<b>' + worst.toFixed(1) + ' ms</b>' : worst.toFixed(1) + ' ms');
+      }
+    }
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var nw = wrap.clientWidth, nh = wrap.clientHeight;
+      if (!nw || !nh) return;
+      w = nw; h = nh;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      draw();
+    }
+
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        heavy = !heavy;
+        toggle.setAttribute('aria-pressed', String(heavy));
+        toggle.textContent = heavy ? '重い処理を止める' : '重い処理を混ぜる';
+        if (reduceMotion) { refill(); }
+        draw();
+      });
+    }
+
+    if (window.ResizeObserver) {
+      new ResizeObserver(function () { if (active) resize(); }).observe(wrap);
+    } else {
+      window.addEventListener('resize', function () { if (active) resize(); });
+    }
+
+    refill();
+
+    return {
+      canvas: canvas,
+      setActive: function (v) { active = v; if (v) resize(); },
+      redraw: draw,
+      tick: function () { if (!active || reduceMotion) return; push(); draw(); }
+    };
+  }
+
+  charts = Array.prototype.map.call(document.querySelectorAll('canvas.framechart'), makeChart);
+
+  if (!reduceMotion) {
+    var last = 0;
+    (function loop(ts) {
+      if (ts - last > 85) { last = ts; charts.forEach(function (c) { c.tick(); }); }
+      requestAnimationFrame(loop);
+    })(0);
+  }
+
+  /* ---------- start ---------- */
+  var initial = parseInt(location.hash.slice(1), 10);
+  go(!isNaN(initial) && initial >= 1 ? initial - 1 : 0);
+  window.addEventListener('resize', function () {
+    charts.forEach(function (c) { c.setActive(slides[index].contains(c.canvas)); });
+  });
+})();
+</script>
