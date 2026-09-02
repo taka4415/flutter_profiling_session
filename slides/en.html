@@ -1,0 +1,2866 @@
+<title>Intro to Flutter Profiling</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+/* ============================================================
+   Tokens — light is the complete set; dark redefines tokens only.
+   ============================================================ */
+:root {
+  color-scheme: light;
+  --paper:     #F3F5F8;
+  --surface:   #FFFFFF;
+  --surface-2: #E9EDF3;
+  --ink:       #0F1826;
+  --ink-2:     #4C5A72;
+  --muted:     #7C899D;
+  --line:      #D3DBE6;
+  --line-2:    #B4C0D0;
+  --ui:        #2A78D6;   /* UI thread / primary accent */
+  --raster:    #EB6834;   /* Raster thread / secondary accent */
+  --jank:      #D03B3B;   /* status: critical */
+  --ok:        #0CA30C;   /* status: good */
+  --ui-wash:     rgba(42,120,214,.10);
+  --raster-wash: rgba(235,104,52,.11);
+  --jank-wash:   rgba(208,59,59,.10);
+  --ok-wash:     rgba(12,163,12,.10);
+  --code-bg:   #0D1626;
+  --code-ink:  #D9E4F3;
+  --code-dim:  #7E92AE;
+  --shadow:    0 1px 2px rgba(15,24,38,.05), 0 10px 30px rgba(15,24,38,.08);
+
+  --font-display: "Source Sans 3", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+  --font-body:    "Source Sans 3", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper:     #0B1220;
+    --surface:   #131C2C;
+    --surface-2: #1B2536;
+    --ink:       #E7ECF4;
+    --ink-2:     #AEBACB;
+    --muted:     #7E8CA3;
+    --line:      #26313F;
+    --line-2:    #384558;
+    --ui:        #3987E5;
+    --raster:    #D95926;
+    --jank:      #EE6A64;
+    --ok:        #35C06A;
+    --ui-wash:     rgba(57,135,229,.16);
+    --raster-wash: rgba(217,89,38,.18);
+    --jank-wash:   rgba(238,106,100,.15);
+    --ok-wash:     rgba(53,192,106,.14);
+    --code-bg:   #060C17;
+    --code-ink:  #D9E4F3;
+    --code-dim:  #6E819C;
+    --shadow:    0 1px 2px rgba(0,0,0,.45), 0 10px 30px rgba(0,0,0,.40);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper:     #0B1220;
+  --surface:   #131C2C;
+  --surface-2: #1B2536;
+  --ink:       #E7ECF4;
+  --ink-2:     #AEBACB;
+  --muted:     #7E8CA3;
+  --line:      #26313F;
+  --line-2:    #384558;
+  --ui:        #3987E5;
+  --raster:    #D95926;
+  --jank:      #EE6A64;
+  --ok:        #35C06A;
+  --ui-wash:     rgba(57,135,229,.16);
+  --raster-wash: rgba(217,89,38,.18);
+  --jank-wash:   rgba(238,106,100,.15);
+  --ok-wash:     rgba(53,192,106,.14);
+  --code-bg:   #060C17;
+  --code-ink:  #D9E4F3;
+  --code-dim:  #6E819C;
+  --shadow:    0 1px 2px rgba(0,0,0,.45), 0 10px 30px rgba(0,0,0,.40);
+}
+
+/* ============================================================
+   Shell
+   ============================================================ */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+.deck {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+.stage {
+  position: relative;
+  width: min(100vw, calc((100dvh - 3.4rem) * 16 / 9));
+  height: min(calc(100dvh - 3.4rem), calc(100vw * 9 / 16));
+  container-type: size;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+/* ============================================================
+   Slide frame + type scale (all sizes in container units)
+   ============================================================ */
+.slide {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  padding: 4.0cqw 5.6cqw 3.6cqw 7.4cqw;
+  font-size: 1.42cqw;
+  line-height: 1.72;
+  color: var(--ink-2);
+}
+.slide.is-active { display: flex; }
+.slide::before {                       /* left accent bar = section marker */
+  content: "";
+  position: absolute;
+  left: 3.4cqw; top: 4.0cqw; bottom: 3.6cqw;
+  width: 0.28cqw;
+  background: var(--line);
+  border-radius: 1px;
+}
+.slide[data-accent="ui"]::before     { background: var(--ui); }
+.slide[data-accent="raster"]::before { background: var(--raster); }
+.slide[data-accent="jank"]::before   { background: var(--jank); }
+.slide[data-accent="ok"]::before     { background: var(--ok); }
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.94cqw;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 1.4cqw;
+  display: flex;
+  align-items: center;
+  gap: 0.9cqw;
+}
+.eyebrow b { color: var(--ui); font-weight: 700; }
+.slide[data-accent="raster"] .eyebrow b { color: var(--raster); }
+.slide[data-accent="ok"] .eyebrow b     { color: var(--ok); }
+.slide[data-accent="jank"] .eyebrow b   { color: var(--jank); }
+
+h1 {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 3.5cqw;
+  line-height: 1.24;
+  letter-spacing: .005em;
+  margin: 0 0 1.8cqw;
+  color: var(--ink);
+  text-wrap: balance;
+}
+h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.85cqw;
+  line-height: 1.4;
+  margin: 0 0 0.8cqw;
+  color: var(--ink);
+  text-wrap: balance;
+}
+h3 {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.94cqw;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 0.7cqw;
+}
+p { margin: 0 0 1cqw; max-width: 62ch; }
+.lead { font-size: 1.72cqw; line-height: 1.66; color: var(--ink); max-width: 54ch; }
+.sm   { font-size: 1.14cqw; line-height: 1.65; }
+.dim  { color: var(--muted); }
+strong { color: var(--ink); font-weight: 700; }
+em { font-style: normal; color: var(--ui); font-weight: 700; }
+
+.body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 1.6cqw; justify-content: center; }
+.cols  { display: grid; grid-template-columns: 1fr 1fr; gap: 2.6cqw; align-items: start; }
+.cols3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.8cqw; align-items: start; }
+.cols-wide { display: grid; grid-template-columns: 1.15fr 1fr; gap: 2.8cqw; align-items: start; }
+.stack { display: flex; flex-direction: column; gap: 1.1cqw; }
+.grow { flex: 1; min-height: 0; }
+.center-x { align-items: center; }
+
+/* Cards, callouts, tables ------------------------------------ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.9cqw;
+  padding: 1.5cqw 1.7cqw;
+  box-shadow: var(--shadow);
+}
+.card h2 { font-size: 1.42cqw; margin-bottom: 0.4cqw; }
+.card p:last-child { margin-bottom: 0; }
+
+.note {
+  border-left: 0.28cqw solid var(--ui);
+  background: var(--ui-wash);
+  padding: 1.1cqw 1.4cqw;
+  border-radius: 0 0.6cqw 0.6cqw 0;
+  font-size: 1.22cqw;
+}
+.note.bad  { border-color: var(--jank);   background: var(--jank-wash); }
+.note.good { border-color: var(--ok);     background: var(--ok-wash); }
+.note.warm { border-color: var(--raster); background: var(--raster-wash); }
+.note p:last-child { margin-bottom: 0; }
+.note.good em { color: var(--ok); }
+.note.bad em  { color: var(--jank); }
+.note.warm em { color: var(--raster); }
+
+ul, ol { margin: 0 0 1cqw; padding-left: 1.5cqw; }
+li { margin-bottom: 0.55cqw; }
+li::marker { color: var(--muted); }
+ul.tight li { margin-bottom: 0.25cqw; }
+ul.plain { list-style: none; padding-left: 0; }
+ul.plain li { position: relative; padding-left: 1.5cqw; }
+ul.plain li::before {
+  content: "";
+  position: absolute; left: 0.2cqw; top: 0.78cqw;
+  width: 0.42cqw; height: 0.42cqw; border-radius: 50%;
+  background: var(--line-2);
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 1.16cqw; }
+th, td { text-align: left; padding: 0.72cqw 0.9cqw; border-bottom: 1px solid var(--line); vertical-align: top; }
+thead th {
+  font-family: var(--font-mono);
+  font-size: 0.88cqw; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted); font-weight: 700;
+  border-bottom: 1px solid var(--line-2);
+}
+tbody tr:last-child td { border-bottom: none; }
+td.num, th.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.tbl-wrap { overflow-x: auto; }
+.footnote { margin: -0.9cqw 0 0; font-size: 1cqw; max-width: none; }
+.footnote sup, table sup { font-size: .68em; }
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--surface-2);
+  border-radius: 0.3cqw;
+  padding: 0.08em 0.34em;
+  color: var(--ink);
+}
+pre {
+  margin: 0;
+  background: var(--code-bg);
+  color: var(--code-ink);
+  border-radius: 0.7cqw;
+  padding: 1.2cqw 1.4cqw;
+  font-family: var(--font-mono);
+  font-size: 1.06cqw;
+  line-height: 1.7;
+  overflow-x: auto;
+  border-left: 0.28cqw solid var(--ui);
+}
+pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+pre .c { color: var(--code-dim); }
+pre .k { color: #8FC3FF; }
+pre .s { color: #F2A97E; }
+
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  border: 1px solid var(--line-2);
+  border-bottom-width: 0.16cqw;
+  border-radius: 0.3cqw;
+  padding: 0.06em 0.4em;
+  background: var(--surface);
+  color: var(--ink);
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 0.4cqw;
+  font-family: var(--font-mono);
+  font-size: 0.92cqw; letter-spacing: .06em;
+  padding: 0.3cqw 0.7cqw;
+  border-radius: 10cqw;
+  border: 1px solid currentColor;
+}
+.chip.ui     { color: var(--ui); }
+.chip.raster { color: var(--raster); }
+.chip.jank   { color: var(--jank); }
+.chip.ok     { color: var(--ok); }
+.swatch { width: 0.75cqw; height: 0.75cqw; border-radius: 0.18cqw; background: currentColor; }
+
+.metric { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; color: var(--ink); }
+.big-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 3.2cqw;
+  line-height: 1;
+  color: var(--ui);
+}
+
+figure { margin: 0; }
+figcaption { font-size: 1.06cqw; color: var(--muted); margin-top: 0.7cqw; }
+svg.diagram { width: 100%; height: auto; max-width: 100%; display: block; }
+svg.diagram text { font-family: var(--font-mono); fill: currentColor; }
+</style>
+<style>
+/* ============================================================
+   Frame chart (canvas) + legend
+   ============================================================ */
+.chart {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.9cqw;
+  padding: 1.3cqw 1.5cqw 1.1cqw;
+  box-shadow: var(--shadow);
+}
+.chart-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 1cqw; margin-bottom: 0.9cqw; flex-wrap: wrap;
+}
+.chart-title { font-family: var(--font-display); font-weight: 700; font-size: 1.3cqw; color: var(--ink); }
+.legend { display: flex; gap: 1.1cqw; align-items: center; flex-wrap: wrap; }
+.legend .chip { border: none; padding: 0; }
+canvas.framechart { display: block; width: 100%; height: 100%; }
+.chart-canvas-wrap { position: relative; width: 100%; height: 15.5cqw; }
+.chart.compact .chart-canvas-wrap { height: 9cqw; }
+.chart-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1cqw; margin-top: 0.8cqw; font-size: 1.02cqw; color: var(--muted);
+}
+.readout { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.readout b { color: var(--jank); }
+
+button.act {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 1.05cqw;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  border-radius: 0.5cqw;
+  padding: 0.5cqw 1cqw;
+  cursor: pointer;
+}
+button.act:hover { border-color: var(--ui); color: var(--ui); }
+button.act[aria-pressed="true"] { background: var(--jank); border-color: var(--jank); color: #fff; }
+
+/* ============================================================
+   Cover
+   ============================================================ */
+.cover { justify-content: center; padding-left: 7.4cqw; }
+.cover h1 { font-size: 5.4cqw; margin-bottom: 1.2cqw; }
+.cover .sub { font-size: 2cqw; color: var(--ink-2); font-family: var(--font-display); font-weight: 700; margin-bottom: 2.6cqw; }
+.goals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.4cqw; margin-bottom: 2.2cqw; }
+.goal { border-top: 0.22cqw solid var(--ui); padding-top: 0.9cqw; }
+.goal:nth-child(2) { border-color: var(--raster); }
+.goal:nth-child(3) { border-color: var(--ok); }
+.goal .n { font-family: var(--font-mono); font-size: 0.9cqw; letter-spacing: .14em; color: var(--muted); }
+.goal .t { font-family: var(--font-display); font-weight: 700; font-size: 1.35cqw; color: var(--ink); line-height: 1.45; }
+.colophon { font-family: var(--font-mono); font-size: 1cqw; color: var(--muted); letter-spacing: .04em; }
+
+/* ============================================================
+   Quiz
+   ============================================================ */
+.quiz-q { font-family: var(--font-display); font-weight: 700; font-size: 2.1cqw; color: var(--ink); line-height: 1.45; margin-bottom: 1.6cqw; text-wrap: balance; }
+.opts { display: grid; gap: 0.8cqw; }
+.opt {
+  display: flex; align-items: flex-start; gap: 1cqw;
+  text-align: left; width: 100%;
+  font-family: var(--font-body); font-size: 1.3cqw; line-height: 1.55;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.7cqw;
+  padding: 1cqw 1.3cqw;
+  cursor: pointer;
+}
+.opt:hover:not([data-state]) { border-color: var(--ui); }
+.opt .mark {
+  flex: none;
+  font-family: var(--font-mono); font-weight: 700; font-size: 1.05cqw;
+  width: 1.9cqw; height: 1.9cqw; border-radius: 50%;
+  display: grid; place-items: center;
+  border: 1px solid var(--line-2); color: var(--muted);
+}
+.opt[data-state="correct"]   { border-color: var(--ok);   background: var(--ok-wash); }
+.opt[data-state="correct"] .mark { border-color: var(--ok); color: var(--ok); }
+.opt[data-state="wrong"]     { border-color: var(--jank); background: var(--jank-wash); }
+.opt[data-state="wrong"] .mark   { border-color: var(--jank); color: var(--jank); }
+.opt[data-state="dim"]       { opacity: .5; }
+.answer { display: none; }
+.answer.is-open { display: block; }
+
+/* ============================================================
+   HUD
+   ============================================================ */
+.hud {
+  width: min(100vw, calc((100dvh - 3.4rem) * 16 / 9));
+  height: 3.4rem;
+  flex: none;
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0 1rem;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+  font-size: 0.72rem;
+}
+.hud-section {
+  font-family: var(--font-mono);
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  min-width: 12rem;
+}
+.hud-section b { color: var(--ui); }
+.ticks { flex: 1; display: flex; align-items: flex-end; gap: 2px; height: 1.4rem; min-width: 0; }
+.tick {
+  flex: 1 1 0; min-width: 1px;
+  height: 40%;
+  background: var(--line-2);
+  border: none; padding: 0;
+  border-radius: 1px;
+  cursor: pointer;
+  transition: height .12s ease, background .12s ease;
+}
+.tick[data-sec="bonus"] { background: var(--line); }
+.tick.seen { background: var(--ui); opacity: .38; }
+.tick.seen[data-sec="bonus"] { background: var(--raster); opacity: .32; }
+.tick.now { height: 100%; background: var(--ui); opacity: 1; }
+.tick.now[data-sec="bonus"] { background: var(--raster); }
+.tick.boundary { margin-left: 7px; }
+.tick:focus-visible { outline: 2px solid var(--ui); outline-offset: 2px; }
+.hud-right { display: flex; align-items: center; gap: .55rem; white-space: nowrap; }
+.counter { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 700; }
+.hud button {
+  font-family: var(--font-mono); font-size: .68rem; letter-spacing: .06em;
+  color: var(--muted); background: transparent;
+  border: 1px solid var(--line); border-radius: 4px;
+  padding: .3rem .5rem; cursor: pointer;
+}
+.hud button:hover { color: var(--ui); border-color: var(--ui); }
+.hud button[aria-pressed="true"] { color: var(--ui); border-color: var(--ui); background: var(--ui-wash); }
+.hud-lang {
+  font-family: var(--font-mono); font-size: .68rem; letter-spacing: .06em;
+  color: var(--muted); background: transparent; text-decoration: none;
+  border: 1px solid var(--line); border-radius: 4px;
+  padding: .3rem .5rem;
+}
+.hud-lang:hover { color: var(--ui); border-color: var(--ui); }
+
+/* ============================================================
+   Overlays: notes / navigator / help
+   ============================================================ */
+.notes {
+  position: fixed; left: 0; right: 0; bottom: 3.4rem;
+  max-height: 34vh; overflow-y: auto;
+  background: var(--surface); border-top: 2px solid var(--ui);
+  padding: 1rem 1.4rem; display: none;
+  box-shadow: 0 -10px 30px rgba(0,0,0,.14);
+  z-index: 40;
+}
+.notes.is-open { display: block; }
+.notes h4 {
+  margin: 0 0 .5rem; font-family: var(--font-mono);
+  font-size: .68rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
+}
+.notes p { font-size: .92rem; line-height: 1.75; color: var(--ink-2); max-width: 90ch; margin: 0 0 .5rem; }
+
+.sheet {
+  position: fixed; inset: 0; z-index: 60;
+  background: var(--paper);
+  display: none; flex-direction: column;
+  padding: 1.6rem 2rem 2rem;
+  overflow-y: auto;
+}
+.sheet.is-open { display: flex; }
+.sheet h3 { font-size: .72rem; }
+.nav-group { margin-bottom: 1.4rem; }
+.nav-group-title {
+  font-family: var(--font-mono); font-size: .68rem; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--muted);
+  padding-bottom: .4rem; margin-bottom: .7rem;
+  border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between;
+}
+.nav-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: .5rem; }
+.nav-item {
+  text-align: left; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line);
+  border-left: 3px solid var(--ui);
+  border-radius: 6px; padding: .55rem .7rem;
+  font-family: var(--font-body); font-size: .82rem; line-height: 1.4; color: var(--ink);
+  display: flex; gap: .6rem; align-items: baseline;
+}
+.nav-item[data-sec="bonus"] { border-left-color: var(--raster); }
+.nav-item:hover { border-color: var(--ui); background: var(--ui-wash); }
+.nav-item .n { font-family: var(--font-mono); font-size: .7rem; color: var(--muted); flex: none; }
+.nav-item.now { outline: 2px solid var(--ui); }
+.sheet-close { position: absolute; top: 1.2rem; right: 1.6rem; }
+.help-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: .6rem 2rem; max-width: 60rem; }
+.help-row { display: flex; gap: .8rem; align-items: baseline; font-size: .88rem; color: var(--ink-2); padding: .3rem 0; border-bottom: 1px solid var(--line); }
+.help-row .k { font-family: var(--font-mono); color: var(--ink); flex: none; min-width: 6.5rem; }
+
+/* ============================================================
+   Motion & print
+   ============================================================ */
+:focus-visible { outline: 2px solid var(--ui); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+@page { size: A4 landscape; margin: 0; }
+@media print {
+  body { overflow: visible; }
+  .deck { display: block; height: auto; }
+  .hud, .notes, .sheet, .chart-foot button { display: none !important; }
+  .stage {
+    position: static;
+    width: 100%; height: auto;
+    container-type: normal;
+    overflow: visible;
+  }
+  /* One slide per page. Each slide is its own container so cqw still works. */
+  .slide {
+    position: relative; inset: auto;
+    display: flex !important;
+    width: 100%; aspect-ratio: 16 / 9;
+    container-type: size;
+    break-after: page; page-break-after: always;
+    break-inside: avoid;
+  }
+  .slide:last-of-type { break-after: auto; page-break-after: auto; }
+  .answer { display: block !important; }
+}
+</style>
+
+<div class="deck">
+<div class="stage" id="stage">
+
+<!-- ═══════════════ COVER ═══════════════ -->
+<section class="slide cover" data-sec="cover" data-title="Cover" data-accent="ui"
+  data-notes="Open with: ‘Has anyone told you your app feels slow?’ Today’s goal is not becoming a profiling master — it’s being able to open DevTools tomorrow and find a red bar by yourself. The chart below mimics the real Flutter Frames chart in DevTools; say you’ll show the real thing later.">
+  <div class="eyebrow"><span>Flutter Performance</span><span>·</span><span>60 min session</span></div>
+  <h1>Intro to Profiling</h1>
+  <div class="sub">Catch “it feels slow” with numbers</div>
+  <div class="goals">
+    <div class="goal">
+      <div class="n">GOAL 01</div>
+      <div class="t">Turn “slow”<br>into numbers</div>
+    </div>
+    <div class="goal">
+      <div class="n">GOAL 02</div>
+      <div class="t">Pin the culprit<br>in DevTools</div>
+    </div>
+    <div class="goal">
+      <div class="n">GOAL 03</div>
+      <div class="t">Do this on your<br>own app tomorrow</div>
+    </div>
+  </div>
+  <div class="chart compact" style="margin-bottom:1.6cqw">
+    <div class="chart-canvas-wrap"><canvas class="framechart" data-jank="0.12" aria-label="Two bar charts of per-frame time: Raster on top, UI on the bottom. Frames over the 16.7ms budget are shown in red."></canvas></div>
+  </div>
+  <div class="colophon">Flutter 3.44 · Dart 3.12 · DevTools 2.57</div>
+</section>
+
+<!-- ═══════════════ 1. What profiling is ═══════════════ -->
+<section class="slide" data-sec="s1" data-title="What profiling is" data-accent="ui"
+  data-notes="Define it once, cleanly. The point is measuring a running app — not reading code. Mention that arguing about performance in code review never settles it; that pays off later.">
+  <div class="eyebrow"><b>01</b><span>What profiling is</span></div>
+  <h1>Run the app, and see<br>where time disappears</h1>
+  <div class="body">
+    <p class="lead">Profiling means <em>measuring a running app</em> so you can see where time and memory are actually spent.</p>
+    <div class="cols3">
+      <div class="card">
+        <h3>Not reading code</h3>
+        <p class="sm">Staring at code and thinking “this looks slow” is not profiling. You run it and take a recording.</p>
+      </div>
+      <div class="card">
+        <h3>A tool that kills guesses</h3>
+        <p class="sm">It turns “probably here” into “it was here.” You don’t take a guess — you check.</p>
+      </div>
+      <div class="card">
+        <h3>No extra setup</h3>
+        <p class="sm">DevTools ships with the Flutter SDK. No extra library, no account.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s1" data-title="How it differs from debugging" data-accent="ui"
+  data-notes="This is the table you want to land. At ‘it vanishes the moment you pause,’ ask if anyone has hit that. Then: that’s why you need a dedicated tool — DevTools.">
+  <div class="eyebrow"><b>01</b><span>What profiling is</span></div>
+  <h1>A different job from debugging</h1>
+  <div class="body">
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:16%"></th><th style="width:42%">Bugs</th><th style="width:42%">Performance problems</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Symptom</strong></td><td>Behavior is <strong>wrong</strong></td><td>Behavior is correct. <strong>Just slow</strong></td></tr>
+          <tr><td><strong>Repro</strong></td><td>Happens whenever the conditions match</td><td>Changes with device, data size, timing</td></tr>
+          <tr><td><strong>How you catch it</strong></td><td>Pause on a breakpoint</td><td>It vanishes when you pause. You have to record</td></tr>
+          <tr><td><strong>Did you fix it?</strong></td><td>If it works, you’re done</td><td>You won’t know unless you measure</td></tr>
+          <tr><td><strong>Tool</strong></td><td>Debugger</td><td><strong>Profiler (DevTools)</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">
+      <p>Performance problems vanish when you pause execution. That’s why there’s a separate tool that records without stopping.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s1" data-title="Don’t guess, measure" data-accent="ui"
+  data-notes="A famous line — don’t leave it as a slogan. Explain why hunches fail in Flutter: two threads, and the slowness may not be Dart at all. Tell the story on the right as something you actually did.">
+  <div class="eyebrow"><b>01</b><span>What profiling is</span></div>
+  <h1>Don’t guess, measure</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <h2>Why hunches miss</h2>
+        <ul class="plain">
+          <li>A Flutter frame runs on <strong>two threads</strong>. The slow part may not be your Dart code</li>
+          <li>The same code behaves differently by device, screen size, and data volume</li>
+          <li>“Code that looks heavy” and “code that actually costs time” are not the same</li>
+        </ul>
+      </div>
+      <div class="stack">
+        <div class="note bad">
+          <p><strong>A common miss</strong></p>
+          <p class="sm">List feels slow → sprinkle <code>const</code>, switch to <code>ListView.builder</code>. Three hours later, it still feels the same.</p>
+        </div>
+        <div class="note good">
+          <p><strong>Measure, then fix</strong></p>
+          <p class="sm">DevTools showed Raster all red. The culprit was a per-row <code>BackdropFilter</code>. One line deleted, done.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s1" data-title="What to measure — three axes" data-accent="ui"
+  data-notes="Say up front: today is #1 only. 2 and 3 live in Extra. Start with time because jank is what users complain about first.">
+  <div class="eyebrow"><b>01</b><span>What profiling is</span></div>
+  <h1>There are three things to measure</h1>
+  <div class="body">
+    <div class="cols3">
+      <div class="card" style="border-top:0.28cqw solid var(--ui)">
+        <h3>01 — Time</h3>
+        <h2>Does it hitch?</h2>
+        <p class="sm">Time to draw one frame. This is what users complain about first.</p>
+        <p class="sm dim">DevTools ▸ <strong>Performance</strong> / <strong>CPU Profiler</strong></p>
+        <p class="sm"><span class="chip ui"><span class="swatch"></span>Today: this</span></p>
+      </div>
+      <div class="card">
+        <h3>02 — Memory</h3>
+        <h2>Does it keep growing?</h2>
+        <p class="sm">Why the app dies after you open and close a screen over and over. It creeps up.</p>
+        <p class="sm dim">DevTools ▸ <strong>Memory</strong></p>
+        <p class="sm dim">Covered in Extra</p>
+      </div>
+      <div class="card">
+        <h3>03 — Size</h3>
+        <h2>Did the app get fat?</h2>
+        <p class="sm">Hits download rate and uninstalls after install. Check occasionally before a release.</p>
+        <p class="sm dim">DevTools ▸ <strong>App Size</strong></p>
+        <p class="sm dim">Covered in Extra</p>
+      </div>
+    </div>
+    <div class="note">
+      <p>Each one uses a different tool. Today we stay on <em>time — the one people ask about most</em>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 2. Why it matters ═══════════════ -->
+<section class="slide" data-sec="s2" data-title="“It feels slow” is not actionable" data-accent="jank"
+  data-notes="Read left vs right out loud. Once you can say the right-hand version you can (1) hand it to someone else, (2) say whether it’s fixed, (3) decide if it’s worth fixing. ‘Profiling is as much about how you report as it is about tech’ lands well.">
+  <div class="eyebrow"><b>02</b><span>Why it matters</span></div>
+  <h1>“It feels slow” is<br>something no one can take</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="note bad">
+        <h3>Before you measure</h3>
+        <p style="font-size:1.5cqw">“The list screen feels kinda slow.”</p>
+        <ul class="tight sm plain">
+          <li>Which device? Which gesture?</li>
+          <li>How slow, exactly?</li>
+          <li>If you ‘fix’ it, how do you say it’s fixed?</li>
+        </ul>
+      </div>
+      <div class="note good">
+        <h3>After you measure</h3>
+        <p style="font-size:1.5cqw">“Pixel 6a / profile. Three flicks on the list: <span class="metric">42</span> frames over 16.7ms, worst <span class="metric">68ms</span>. <strong>Raster</strong> is the long one.”</p>
+        <ul class="tight sm plain">
+          <li>Someone else can reproduce the same steps</li>
+          <li>Fixed / not fixed is a number</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note">
+      <p>The best thing measurement gives you is not speed — it’s <em>being able to look at the same thing and talk</em>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s2" data-title="What jank is (live)" data-accent="jank"
+  data-notes="The peak of the main talk. First: 60fps = 16.7ms budget. Then hit ‘Add extra work’ and watch bars punch through the budget line and go red. Tease that the two colors are next chapter. Don’t leave the button on — turn it back and compare.">
+  <div class="eyebrow"><b>02</b><span>Why it matters</span></div>
+  <h1>Jank = one frame<br>blowing its budget</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="chart">
+        <div class="chart-head">
+          <div class="chart-title">Two graphs (a Performance Overlay mock)</div>
+          <div class="legend">
+            <span class="chip raster"><span class="swatch"></span>Raster</span>
+            <span class="chip ui"><span class="swatch"></span>UI</span>
+            <span class="chip jank"><span class="swatch"></span>Over budget</span>
+          </div>
+        </div>
+        <div class="chart-canvas-wrap"><canvas class="framechart" data-jank="0.05" aria-label="Two bar charts of per-frame time: Raster on top, UI on the bottom. Each has a 16.7ms budget line; frames over it are red."></canvas></div>
+        <div class="chart-foot">
+          <div class="readout" data-readout></div>
+          <button class="act" type="button" data-load-toggle aria-pressed="false">Add extra work</button>
+        </div>
+      </div>
+      <div class="stack">
+        <div>
+          <div class="big-num">16.7<span style="font-size:1.4cqw"> ms</span></div>
+          <p class="sm">What a 60fps device can spend on one frame. If <strong>UI + Raster</strong> go over, that frame misses.</p>
+        </div>
+        <div>
+          <div class="big-num" style="color:var(--raster)">8.3<span style="font-size:1.4cqw"> ms</span></div>
+          <p class="sm">Budget on a 120Hz device. Recent flagships live here. The budget is <strong>half</strong>.</p>
+        </div>
+        <div class="note bad">
+          <p class="sm">A missed frame shows the previous picture one more time. That’s the hitch you feel.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s2" data-title="Users remember the worst frames" data-accent="jank"
+  data-notes="Averages misdiagnose ‘fast enough.’ People don’t remember 300 smooth frames — they remember one hitch. Look at over-budget count and worst, not the mean. Plant the ‘how to set a goal’ hook here.">
+  <div class="eyebrow"><b>02</b><span>Why it matters</span></div>
+  <h1>Users remember the worst,<br>not the average</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="card">
+        <h3>App A</h3>
+        <table>
+          <tbody>
+            <tr><td>Mean</td><td class="num">8.1 ms</td></tr>
+            <tr><td>Median</td><td class="num">7.8 ms</td></tr>
+            <tr><td>Worst</td><td class="num" style="color:var(--jank)">92 ms</td></tr>
+            <tr><td>Over 16.7ms</td><td class="num" style="color:var(--jank)">6 / 300</td></tr>
+          </tbody>
+        </table>
+        <p class="sm">The mean looks great. Six hitches later, users call it a “slow app.”</p>
+      </div>
+      <div class="stack">
+        <h2>So watch these three numbers</h2>
+        <ul class="plain">
+          <li><strong>Frames over 16.7ms (8.3ms)</strong> — how many hitches</li>
+          <li><strong>Worst frame time</strong> — how ugly the hitch was</li>
+          <li><strong>Median</strong> — generally sluggish, or the occasional spike</li>
+        </ul>
+        <div class="note">
+          <p class="sm">The Flutter Frames chart in DevTools exists to spot that one occasional spike. The mean is nowhere on the screen.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 3. How a frame is built ═══════════════ -->
+<section class="slide" data-sec="s3" data-title="Four threads" data-accent="ui"
+  data-notes="Skip this and they can’t read the tools. ‘Flutter builds one picture in two stages’ is enough. Name Platform and I/O, then move on. Point at the ‘Hand off the layer tree’ label.">
+  <div class="eyebrow"><b>03</b><span>How a frame is built</span></div>
+  <h1>One picture is a relay<br>between two threads</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <figure>
+        <svg class="diagram" viewBox="0 0 560 400" role="img" aria-label="Flow: input events go from the Platform thread to the UI thread; the UI thread builds a layer tree via build, layout, and paint; the Raster thread turns that into GPU commands and puts it on screen. The I/O thread decodes images and returns them to UI.">
+          <defs>
+            <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+          <g stroke="currentColor" fill="none" stroke-width="1.5" opacity=".45">
+            <rect x="120" y="8" width="300" height="46" rx="7"/>
+          </g>
+          <text x="270" y="30" text-anchor="middle" font-size="13" opacity=".6">Platform thread</text>
+          <text x="270" y="46" text-anchor="middle" font-size="11" opacity=".45">OS events / plugins</text>
+
+          <g stroke="currentColor" opacity=".55"><line x1="270" y1="54" x2="270" y2="94" marker-end="url(#ar)" stroke-width="1.5"/></g>
+          <text x="282" y="78" font-size="11" opacity=".6">tap / scroll</text>
+
+          <g stroke="var(--ui)" fill="var(--ui-wash)" stroke-width="2">
+            <rect x="120" y="96" width="300" height="94" rx="9"/>
+          </g>
+          <text x="270" y="120" text-anchor="middle" font-size="14" fill="var(--ui)" font-weight="700">UI thread (Dart)</text>
+          <text x="270" y="145" text-anchor="middle" font-size="13">build → layout → paint</text>
+          <text x="270" y="171" text-anchor="middle" font-size="11" opacity=".7">Where your code runs</text>
+
+          <g stroke="var(--ui)"><line x1="270" y1="190" x2="270" y2="230" marker-end="url(#ar)" stroke-width="2"/></g>
+          <text x="282" y="214" font-size="12" fill="var(--ui)" font-weight="700">Hand off the layer tree</text>
+
+          <g stroke="var(--raster)" fill="var(--raster-wash)" stroke-width="2">
+            <rect x="120" y="232" width="300" height="94" rx="9"/>
+          </g>
+          <text x="270" y="256" text-anchor="middle" font-size="14" fill="var(--raster)" font-weight="700">Raster thread</text>
+          <text x="270" y="281" text-anchor="middle" font-size="13">Layer tree → GPU commands</text>
+          <text x="270" y="307" text-anchor="middle" font-size="11" opacity=".7">Where Impeller actually draws</text>
+
+          <g stroke="var(--raster)"><line x1="270" y1="326" x2="270" y2="356" marker-end="url(#ar)" stroke-width="2"/></g>
+          <g stroke="currentColor" fill="none" stroke-width="1.5"><rect x="200" y="358" width="140" height="34" rx="7"/></g>
+          <text x="270" y="380" text-anchor="middle" font-size="13" font-weight="700">Screen</text>
+
+          <g stroke="currentColor" fill="none" stroke-width="1.5" opacity=".45">
+            <rect x="440" y="96" width="112" height="60" rx="7"/>
+          </g>
+          <text x="496" y="120" text-anchor="middle" font-size="12" opacity=".6">I/O thread</text>
+          <text x="496" y="138" text-anchor="middle" font-size="10" opacity=".45">image decode</text>
+          <g stroke="currentColor" opacity=".45"><line x1="440" y1="130" x2="424" y2="130" marker-end="url(#ar)" stroke-width="1.5"/></g>
+        </svg>
+        <figcaption>UI decides what to draw. Raster actually draws it.</figcaption>
+      </figure>
+      <div class="stack">
+        <div class="note">
+          <p><strong>Remember just these two</strong></p>
+          <p class="sm"><span class="chip ui"><span class="swatch"></span>UI thread</span> — Dart runs here. So does <code>build()</code>. <strong>Block this and everything stops.</strong></p>
+          <p class="sm"><span class="chip raster"><span class="swatch"></span>Raster thread</span> — draws the layer tree on the GPU. <strong>Not one line of Dart runs here.</strong></p>
+        </div>
+        <p class="sm dim">The Platform thread talks to the OS. The I/O thread decodes images and similar work. Today, just remember the names.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s3" data-title="That’s why there are two graphs" data-accent="ui"
+  data-notes="This slide explains why every tool always shows two numbers. You can jump back to the live chart and cash in the two stacked rows. Also: DevTools’ Flutter Frames chart stacks the same two numbers into one bar.">
+  <div class="eyebrow"><b>03</b><span>How a frame is built</span></div>
+  <h1>That’s why every tool<br>shows two numbers</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="chart">
+        <div class="chart-head">
+          <div class="chart-title">Two graphs (a Performance Overlay mock)</div>
+          <div class="legend">
+            <span class="chip raster"><span class="swatch"></span>Raster</span>
+            <span class="chip ui"><span class="swatch"></span>UI</span>
+            <span class="chip jank"><span class="swatch"></span>Over budget</span>
+          </div>
+        </div>
+        <div class="chart-canvas-wrap"><canvas class="framechart" data-jank="0.05" aria-label="Two bar charts of per-frame time: Raster on top, UI on the bottom. Each has a 16.7ms budget line; frames over it are red."></canvas></div>
+        <div class="chart-foot">
+          <div class="readout" data-readout></div>
+          <button class="act" type="button" data-load-toggle aria-pressed="false">Add extra work</button>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>If either one blows the budget,<br>that frame is jank</h2>
+        <p class="sm">Not the sum. <strong>UI and Raster each need to stay under 16.7ms</strong>. DevTools paints a frame red if either one goes over.</p>
+        <div class="note">
+          <p class="sm">Performance Overlay is two stacked graphs. DevTools’ Flutter Frames chart is one stacked bar. They look different; <em>the two numbers are the same</em>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s3" data-title="Which bar is red changes the suspect" data-accent="raster"
+  data-notes="The most useful table of the day. Print-and-tape-to-desk energy. Train them to ask ‘which one is red?’ first. Stress that Raster-side causes will never show up in Dart, no matter how hard you read.">
+  <div class="eyebrow"><b>03</b><span>How a frame is built</span></div>
+  <h1>Which one is red?<br>That alone picks where you look</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="card" style="border-top:0.28cqw solid var(--ui)">
+        <h3>UI thread is red</h3>
+        <h2>Your Dart is expensive</h2>
+        <ul class="tight sm plain">
+          <li><code>build()</code> does compute / format / sort work every time</li>
+          <li><code>setState()</code> is too high, so the whole screen rebuilds</li>
+          <li>Parsing a huge JSON, or sync file I/O</li>
+          <li><code>ListView(children: [...])</code> builds every row up front</li>
+        </ul>
+        <p class="sm dim">→ Next: <strong>CPU Profiler</strong></p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--raster)">
+        <h3>Raster thread is red</h3>
+        <h2>Drawing is expensive</h2>
+        <ul class="tight sm plain">
+          <li><code>Opacity</code> / <code>ShaderMask</code> / <code>ColorFilter</code> (they call <code>saveLayer()</code>)</li>
+          <li>Clipping with <code>Clip.antiAliasWithSaveLayer</code></li>
+          <li><code>BackdropFilter</code> blur, too many shadows</li>
+          <li>An image much larger than its on-screen size</li>
+        </ul>
+        <p class="sm dim">→ Next: <strong>More debugging options</strong><br>(this one only works in a debug build)</p>
+      </div>
+    </div>
+    <div class="note warm">
+      <p>Raster-side causes <em>will not show up in Dart, no matter how hard you read.</em> When ‘the logic does nothing’ and it’s still slow, it’s usually this.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 4. How to work ═══════════════ -->
+<section class="slide" data-sec="s4" data-title="Only three rules" data-accent="ui"
+  data-notes="Break these three and everything after is wasted. Repeat #2 every time. A simulator’s CPU is the host Mac, so Dart is too fast, and the GPU is unlike a real device — Raster calls go completely wrong.">
+  <div class="eyebrow"><b>04</b><span>How to work</span></div>
+  <h1>Only three rules to keep</h1>
+  <div class="body">
+    <div class="cols3">
+      <div class="card" style="border-top:0.28cqw solid var(--ui)">
+        <h3>Rule 01</h3>
+        <h2>Measure in profile mode</h2>
+        <p class="sm">Debug numbers are not production. Launch with <code>flutter run --profile</code>.</p>
+        <p class="sm dim">Debug is slow by design. Don’t argue from debug numbers.</p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--raster)">
+        <h3>Rule 02</h3>
+        <h2>Measure on a real device</h2>
+        <p class="sm">Simulators and emulators are not a measurement target. Dart is too fast, and the GPU is different.</p>
+        <p class="sm dim">Pick <strong>the slowest device your users actually have</strong> and stick with it.</p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--ok)">
+        <h3>Rule 03</h3>
+        <h2>Change one thing at a time</h2>
+        <p class="sm">Fix three things and it gets faster — you still don’t know which one worked. You also can’t revert the ones that didn’t.</p>
+        <p class="sm dim">Change → measure → write it down, as one set.</p>
+      </div>
+    </div>
+    <div class="note bad">
+      <p>Break any of these three and everything after is <em>a redo</em>. Keep just this, and the rest will work out.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s4" data-title="Three build modes" data-accent="ui"
+  data-notes="Read the table left to right. Debug is JIT plus asserts, so of course it’s slow. Release is fast but VM Service is off, so DevTools can’t connect. Profile exists for ‘production-like speed, but you can still measure.’">
+  <div class="eyebrow"><b>04</b><span>How to work</span></div>
+  <h1>Profile mode exists<br>so you can measure</h1>
+  <div class="body">
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:22%"></th><th style="width:26%">debug</th><th style="width:26%">profile</th><th style="width:26%">release</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Compile</strong></td><td>JIT<sup>*1</sup></td><td>AOT<sup>*2</sup> (same as prod)</td><td>AOT<sup>*2</sup></td></tr>
+          <tr><td><strong>Asserts / debug checks</strong></td><td>On</td><td>Off</td><td>Off</td></tr>
+          <tr><td><strong>Hot reload</strong></td><td>Yes</td><td>No</td><td>No</td></tr>
+          <tr><td><strong>DevTools</strong></td><td>Yes</td><td><strong>Yes</strong></td><td>No</td></tr>
+          <tr><td><strong>Speed</strong></td><td style="color:var(--jank)">Slow (by design)</td><td style="color:var(--ok)">Near production</td><td style="color:var(--ok)">Production</td></tr>
+          <tr><td><strong>Use for</strong></td><td>Development</td><td><strong>Measuring</strong></td><td>Shipping</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sm dim footnote">*1 <strong>JIT</strong> = Just-In-Time (compile while running)　*2 <strong>AOT</strong> = Ahead-Of-Time (already compiled)</p>
+    <div class="cols">
+      <div class="note good">
+        <p class="sm"><strong>Profile = production-like speed, plus the ability to measure.</strong> That’s why you always measure in this mode.</p>
+      </div>
+      <div class="note bad">
+        <p class="sm">Release is the real production build, but the measurement port (VM Service) is closed, so DevTools can’t connect.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s4" data-title="The measurement loop" data-accent="ui"
+  data-notes="Walk the loop once with your finger. Stress ‘fix only one thing’ and ‘measure again.’ Skip the remeasure and you only get the feeling of having fixed it. The entry is ‘lock the repro’ — that’s the next slide.">
+  <div class="eyebrow"><b>04</b><span>How to work</span></div>
+  <h1>Run the same loop<br>until you hit the goal</h1>
+  <div class="body">
+    <figure>
+      <svg class="diagram" viewBox="0 0 960 230" role="img" aria-label="The measurement loop: lock the repro, measure, identify the culprit, fix one thing, measure again. An arrow returns from the last step to measure. Leave the loop when you hit the goal.">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+        <g stroke="currentColor" fill="none" stroke-width="1.6">
+          <rect x="6"   y="28" width="164" height="66" rx="9"/>
+          <rect x="204" y="28" width="164" height="66" rx="9" stroke="var(--ui)" stroke-width="2.4"/>
+          <rect x="402" y="28" width="164" height="66" rx="9"/>
+          <rect x="600" y="28" width="164" height="66" rx="9"/>
+          <rect x="798" y="28" width="156" height="66" rx="9"/>
+        </g>
+        <g font-size="13" text-anchor="middle">
+          <text x="88"  y="56" font-size="11" opacity=".55">STEP 1</text><text x="88"  y="76">Lock the repro</text>
+          <text x="286" y="56" font-size="11" fill="var(--ui)">STEP 2</text><text x="286" y="76" fill="var(--ui)" font-weight="700">Measure</text>
+          <text x="484" y="56" font-size="11" opacity=".55">STEP 3</text><text x="484" y="76">Find the culprit</text>
+          <text x="682" y="56" font-size="11" opacity=".55">STEP 4</text><text x="682" y="76">Fix one thing</text>
+          <text x="876" y="56" font-size="11" opacity=".55">STEP 5</text><text x="876" y="76">Measure again</text>
+        </g>
+        <g stroke="currentColor" stroke-width="1.6" opacity=".7">
+          <line x1="170" y1="61" x2="200" y2="61" marker-end="url(#ar2)"/>
+          <line x1="368" y1="61" x2="398" y2="61" marker-end="url(#ar2)"/>
+          <line x1="566" y1="61" x2="596" y2="61" marker-end="url(#ar2)"/>
+          <line x1="764" y1="61" x2="794" y2="61" marker-end="url(#ar2)"/>
+        </g>
+        <g stroke="var(--ui)" fill="none" stroke-width="2">
+          <path d="M876 94 L876 160 L286 160 L286 98" marker-end="url(#ar2)"/>
+        </g>
+        <text x="581" y="180" text-anchor="middle" font-size="13" fill="var(--ui)" font-weight="700">Missed the goal? Same steps, once more</text>
+        <g stroke="var(--ok)" stroke-width="2"><line x1="954" y1="61" x2="920" y2="61" transform="translate(34,0)" marker-end="url(#ar2)"/></g>
+        <text x="876" y="212" text-anchor="middle" font-size="12" fill="var(--ok)" font-weight="700">Hit the goal? Stop there</text>
+      </svg>
+      <figcaption>The entry is not “measure” — it’s “lock the repro.” If that wobbles, later numbers can’t be compared.</figcaption>
+    </figure>
+    <div class="note">
+      <p class="sm"><strong>Don’t batch changes in step 4.</strong> When it gets faster, you won’t know which change did it. The ones that didn’t become debt.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s4" data-title="Lock the repro steps" data-accent="ui"
+  data-notes="Quiet but high leverage. ‘Scroll around a bit’ is not a before/after. Hand them the template on the right as something they can paste into a ticket. Device name and Flutter version are for you in six months.">
+  <div class="eyebrow"><b>04</b><span>How to work</span></div>
+  <h1>Pick “the same gesture”<br>before you measure</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <div class="note bad">
+          <p><strong>A measurement you can’t compare</strong></p>
+          <p class="sm">“Scroll the list a bit, record when you see red.”<br>→ Next time you can’t flick with the same force.</p>
+        </div>
+        <div class="note good">
+          <p><strong>A measurement you can compare</strong></p>
+          <p class="sm">“From the top of the list, three flicks down. Wait 2 seconds after lift-off, then stop.”<br>→ Anyone, any day: the same steps.</p>
+        </div>
+        <p class="sm dim">If the gesture wobbles, record a longer window and compare <strong>the share of over-budget frames</strong>, not the raw count.</p>
+      </div>
+      <div class="stack">
+        <h2>Five things to write down</h2>
+<pre><code><span class="c"># List-scroll jank</span>
+Device    : Pixel 6a (physical)
+Build     : flutter 3.44.0 / --profile
+Gesture   : 3 flicks down from the top
+Result    : over 16.7ms <span class="s">42</span> / 300 frames
+            worst <span class="s">68ms</span> (Raster)
+Screenshot: devtools-before.png</code></pre>
+        <p class="sm">Write the same five lines after the fix — that’s your proof it worked.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s4" data-title="Decide the finish line first" data-accent="ok"
+  data-notes="The most common profiling failure is never finishing. Set a numeric goal before you start. When you hit it, stop — even if more is possible. Optimization always costs code and time, so stop at the goal.">
+  <div class="eyebrow"><b>04</b><span>How to work</span></div>
+  <h1>Decide the stop condition<br>before you start</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="stack">
+        <div class="note bad">
+          <p><strong>A goal that never ends</strong></p>
+          <ul class="tight sm plain">
+            <li>“Until it’s faster”</li>
+            <li>“Until it feels snappy”</li>
+            <li>“Until there’s less red”</li>
+          </ul>
+          <p class="sm">No matter how far you go, you can always go a little further.</p>
+        </div>
+        <div class="note good">
+          <p><strong>A goal you can finish</strong></p>
+          <ul class="tight sm plain">
+            <li>“On list scroll, frames over 16.7ms = <span class="metric">0</span>”</li>
+            <li>“Worst frame ≤ <span class="metric">24ms</span>”</li>
+            <li>“Tap to first paint ≤ <span class="metric">400ms</span>”</li>
+          </ul>
+          <p class="sm">You can tell, on the spot, whether you hit it.</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>The goal does not have to be zero</h2>
+        <p class="sm">Keeping every frame under 16.7ms on a real device with real data is hard. Start with <strong>the most-used screen and the most-used gesture, only</strong>.</p>
+        <div class="note">
+          <p class="sm"><strong>How to prioritize</strong></p>
+          <ul class="tight sm plain">
+            <li>Most-used screens first</li>
+            <li>Gestures where users notice they’re waiting</li>
+            <li>Cheap fixes first</li>
+          </ul>
+        </div>
+        <p class="sm dim">When you hit the goal, stop — even if more is possible. Optimization always costs readability and your time.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 5. Using the tools ═══════════════ -->
+<section class="slide" data-sec="s5" data-title="Four tools for today" data-accent="ui"
+  data-notes="Lots of tools; the order is fixed. The first two tell you which thread is red. The next two get you to which code. They don’t need to memorize everything — just open 1 then 2.">
+  <div class="eyebrow"><b>05</b><span>Using the tools</span></div>
+  <h1>Four tools. The order is fixed</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="card" style="border-top:0.28cqw solid var(--ui)">
+        <h3>First — which one is red?</h3>
+        <h2>01 · Performance Overlay</h2>
+        <p class="sm">Two graphs drawn on top of the app. You can tell on the spot, without opening DevTools.</p>
+        <h2 style="margin-top:1cqw">02 · Performance view</h2>
+        <p class="sm">The main DevTools view. Every frame is recorded, so you can inspect them one by one later.</p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--raster)">
+        <h3>Then — which code?</h3>
+        <h2>03 · Timeline Events</h2>
+        <p class="sm">What spent how much time inside that frame. You can get down to widget names.</p>
+        <h2 style="margin-top:1cqw">04 · CPU Profiler</h2>
+        <p class="sm">When the UI thread is heavy, go down to methods. Dart code only.</p>
+      </div>
+    </div>
+    <div class="note">
+      <p><em>Don’t open CPU Profiler first.</em> Look at which of UI or Raster is red. If Raster is red, CPU Profiler shows nothing.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="Launch" data-accent="ui"
+  data-notes="Do this live. flutter devices → launch with --profile → open the DevTools URL. For IDE folks, show launch.json and the menu. First-timers miss the two URL lines — point at them.">
+  <div class="eyebrow"><b>05</b><span>Using the tools</span></div>
+  <h1>Launch</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <h3>Command line</h3>
+<pre><code><span class="c"># 1. Check devices</span>
+flutter devices
+
+<span class="c"># 2. Launch in profile mode</span>
+flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
+        <h3 style="margin-top:1cqw">When it starts, you get these two lines</h3>
+<pre><code><span class="c">A Dart VM Service on Pixel 6a is available at:</span>
+<span class="c">  http://127.0.0.1:5xxxx/xxxxxxxx=/</span>
+The Flutter DevTools debugger and profiler
+is available at:
+  <span class="s">http://127.0.0.1:9100?uri=...</span>   <span class="c">← open this one</span></code></pre>
+      </div>
+      <div class="stack">
+        <h3>VS Code</h3>
+<pre><code><span class="c">// .vscode/launch.json</span>
+{
+  <span class="s">"name"</span>: <span class="s">"Flutter (profile)"</span>,
+  <span class="s">"request"</span>: <span class="s">"launch"</span>,
+  <span class="s">"type"</span>: <span class="s">"dart"</span>,
+  <span class="s">"flutterMode"</span>: <span class="s">"profile"</span>
+}</code></pre>
+        <h3 style="margin-top:1cqw">Android Studio / IntelliJ</h3>
+        <p class="sm">Menu: <strong>Run ▸ Flutter Run main.dart in Profile Mode</strong></p>
+        <div class="note bad">
+          <p class="sm"><strong>A common trip-up</strong><br>You hit the usual Run button and you’re still in debug. If DevTools shows a <code>debug</code> badge at the top, relaunch.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="Performance Overlay" data-accent="ui"
+  data-notes="The cheapest first diagnosis. Just press P in the terminal. Reading it is three things: top is Raster, bottom is UI, white line is 16ms. Often you never need DevTools. In the demo you can flip the sample-app toggle here and watch red disappear.">
+  <div class="eyebrow"><b>05</b><span>Using the tools</span></div>
+  <h1>Start with Performance Overlay</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <figure>
+        <svg class="diagram" viewBox="0 0 620 300" role="img" aria-label="How to read Performance Overlay. Two graphs sit on the app: Raster on top, UI below. Each has a white 16ms line; bars over it are red.">
+          <g stroke="currentColor" fill="none" stroke-width="1.6" opacity=".5">
+            <rect x="4" y="4" width="330" height="292" rx="12"/>
+          </g>
+          <text x="169" y="240" text-anchor="middle" font-size="14" opacity=".45">Your app</text>
+          <text x="169" y="262" text-anchor="middle" font-size="12" opacity=".35">(you can still use it)</text>
+
+          <rect x="20" y="20" width="298" height="82" rx="4" fill="var(--raster-wash)" stroke="var(--raster)" stroke-width="1.4"/>
+          <g fill="var(--raster)">
+            <rect x="28"  y="72" width="8" height="24"/><rect x="40" y="66" width="8" height="30"/>
+            <rect x="52"  y="78" width="8" height="18"/><rect x="64" y="70" width="8" height="26"/>
+            <rect x="76"  y="74" width="8" height="22"/><rect x="88" y="64" width="8" height="32"/>
+            <rect x="100" y="80" width="8" height="16"/><rect x="112" y="68" width="8" height="28"/>
+            <rect x="136" y="76" width="8" height="20"/><rect x="148" y="70" width="8" height="26"/>
+            <rect x="160" y="82" width="8" height="14"/><rect x="172" y="66" width="8" height="30"/>
+            <rect x="196" y="78" width="8" height="18"/><rect x="208" y="72" width="8" height="24"/>
+            <rect x="220" y="68" width="8" height="28"/><rect x="232" y="76" width="8" height="20"/>
+            <rect x="256" y="70" width="8" height="26"/><rect x="268" y="80" width="8" height="16"/>
+            <rect x="280" y="74" width="8" height="22"/><rect x="292" y="66" width="8" height="30"/>
+          </g>
+          <g fill="var(--jank)">
+            <rect x="124" y="30" width="8" height="66"/><rect x="184" y="26" width="8" height="70"/>
+            <rect x="244" y="34" width="8" height="62"/>
+          </g>
+          <line x1="20" y1="62" x2="318" y2="62" stroke="currentColor" stroke-width="1.4" stroke-dasharray="4 4"/>
+          <text x="26" y="36" font-size="12" fill="var(--raster)" font-weight="700">Raster</text>
+
+          <rect x="20" y="112" width="298" height="82" rx="4" fill="var(--ui-wash)" stroke="var(--ui)" stroke-width="1.4"/>
+          <g fill="var(--ui)">
+            <rect x="28"  y="172" width="8" height="16"/><rect x="40" y="176" width="8" height="12"/>
+            <rect x="52"  y="170" width="8" height="18"/><rect x="64" y="174" width="8" height="14"/>
+            <rect x="76"  y="178" width="8" height="10"/><rect x="88" y="172" width="8" height="16"/>
+            <rect x="100" y="176" width="8" height="12"/><rect x="112" y="170" width="8" height="18"/>
+            <rect x="124" y="174" width="8" height="14"/><rect x="136" y="178" width="8" height="10"/>
+            <rect x="148" y="172" width="8" height="16"/><rect x="160" y="176" width="8" height="12"/>
+            <rect x="172" y="170" width="8" height="18"/><rect x="184" y="174" width="8" height="14"/>
+            <rect x="196" y="178" width="8" height="10"/><rect x="208" y="172" width="8" height="16"/>
+            <rect x="220" y="176" width="8" height="12"/><rect x="232" y="170" width="8" height="18"/>
+            <rect x="244" y="174" width="8" height="14"/><rect x="256" y="178" width="8" height="10"/>
+            <rect x="268" y="172" width="8" height="16"/><rect x="280" y="176" width="8" height="12"/>
+            <rect x="292" y="170" width="8" height="18"/>
+          </g>
+          <line x1="20" y1="154" x2="318" y2="154" stroke="currentColor" stroke-width="1.4" stroke-dasharray="4 4"/>
+          <text x="26" y="128" font-size="12" fill="var(--ui)" font-weight="700">UI</text>
+
+          <g stroke="currentColor" stroke-width="1.4" opacity=".6">
+            <line x1="340" y1="62" x2="386" y2="62"/><line x1="340" y1="154" x2="386" y2="154"/>
+          </g>
+          <text x="394" y="58" font-size="13" font-weight="700">White line = 16ms</text>
+          <text x="394" y="76" font-size="12" opacity=".7">Bars over this line are the problem</text>
+          <text x="394" y="150" font-size="13" font-weight="700">Bottom graph = UI</text>
+          <text x="394" y="168" font-size="12" opacity=".7">Top graph = Raster</text>
+          <text x="394" y="212" font-size="13" fill="var(--jank)" font-weight="700">In this example Raster</text>
+          <text x="394" y="230" font-size="13" fill="var(--jank)" font-weight="700">overshoots 3 times</text>
+        </svg>
+        <figcaption>Two graphs sit directly on the app. You see the last 300 frames.</figcaption>
+      </figure>
+      <div class="stack">
+        <h2>How to show it</h2>
+        <ul class="plain tight sm">
+          <li>In the terminal from <code>flutter run --profile</code>, press <span class="kbd">P</span></li>
+          <li>Or the toggle in DevTools ▸ Performance</li>
+          <li>From code: <code>MaterialApp(showPerformanceOverlay: true)</code></li>
+        </ul>
+        <div class="note">
+          <p class="sm"><strong>Only three things to read</strong></p>
+          <ul class="tight sm plain">
+            <li>Top graph = Raster, bottom graph = UI</li>
+            <li>White line = 16ms budget</li>
+            <li>Whichever side crosses the line is where you look</li>
+          </ul>
+        </div>
+        <p class="sm dim">If you can decide here, you may never open DevTools. Start with this.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="Map of the Performance view" data-accent="ui"
+  data-notes="Before you project the real thing, spend 30 seconds on this map. First look is overwhelming — point them at the top chart and clicking a red bar. When you switch to the real UI, point at these four spots in order.">
+  <div class="eyebrow"><b>05</b><span>Using the tools</span></div>
+  <h1>A map of DevTools ▸ Performance</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <figure>
+        <svg class="diagram" viewBox="0 0 700 336" role="img" aria-label="Layout of DevTools Performance: tabs at the top, Flutter Frames chart below, Enhance Tracing and More debugging options on the right, Frame Analysis / Timeline Events and a detail pane at the bottom.">
+          <g stroke="currentColor" fill="none" stroke-width="1.6" opacity=".55">
+            <rect x="2" y="2" width="696" height="332" rx="10"/>
+            <line x1="2" y1="34" x2="698" y2="34"/>
+          </g>
+          <g font-size="13">
+            <rect x="14" y="9" width="94" height="20" rx="4" fill="var(--ui-wash)" stroke="var(--ui)" stroke-width="1.4"/>
+            <text x="61" y="24" text-anchor="middle" fill="var(--ui)" font-weight="700">Performance</text>
+            <text x="126" y="24" opacity=".5">CPU Profiler</text>
+            <text x="240" y="24" opacity=".5">Memory</text>
+            <text x="330" y="24" opacity=".5">Network</text>
+            <text x="422" y="24" opacity=".5">App Size</text>
+          </g>
+
+          <text x="16" y="56" font-size="13" font-weight="700">Flutter Frames</text>
+          <g stroke="currentColor" fill="none" stroke-width="1.4" opacity=".45">
+            <rect x="14" y="66" width="446" height="92" rx="6"/>
+            <rect x="470" y="66" width="216" height="92" rx="6"/>
+          </g>
+          <g fill="var(--ui)">
+            <rect x="26" y="132" width="9" height="20"/><rect x="40" y="136" width="9" height="16"/>
+            <rect x="54" y="130" width="9" height="22"/><rect x="68" y="134" width="9" height="18"/>
+            <rect x="96" y="132" width="9" height="20"/><rect x="110" y="138" width="9" height="14"/>
+            <rect x="124" y="130" width="9" height="22"/><rect x="138" y="134" width="9" height="18"/>
+            <rect x="166" y="136" width="9" height="16"/><rect x="180" y="130" width="9" height="22"/>
+            <rect x="194" y="134" width="9" height="18"/><rect x="222" y="132" width="9" height="20"/>
+            <rect x="236" y="136" width="9" height="16"/><rect x="250" y="130" width="9" height="22"/>
+            <rect x="278" y="134" width="9" height="18"/><rect x="292" y="132" width="9" height="20"/>
+            <rect x="306" y="136" width="9" height="16"/><rect x="334" y="130" width="9" height="22"/>
+            <rect x="348" y="134" width="9" height="18"/><rect x="362" y="132" width="9" height="20"/>
+            <rect x="390" y="136" width="9" height="16"/><rect x="404" y="130" width="9" height="22"/>
+            <rect x="418" y="134" width="9" height="18"/><rect x="432" y="132" width="9" height="20"/>
+          </g>
+          <g fill="var(--raster)">
+            <rect x="26" y="120" width="9" height="12"/><rect x="40" y="122" width="9" height="14"/>
+            <rect x="54" y="118" width="9" height="12"/><rect x="68" y="122" width="9" height="12"/>
+            <rect x="96" y="120" width="9" height="12"/><rect x="110" y="124" width="9" height="14"/>
+            <rect x="124" y="118" width="9" height="12"/><rect x="138" y="122" width="9" height="12"/>
+            <rect x="166" y="122" width="9" height="14"/><rect x="180" y="118" width="9" height="12"/>
+            <rect x="194" y="122" width="9" height="12"/><rect x="222" y="120" width="9" height="12"/>
+            <rect x="236" y="124" width="9" height="12"/><rect x="250" y="118" width="9" height="12"/>
+            <rect x="278" y="122" width="9" height="12"/><rect x="292" y="120" width="9" height="12"/>
+            <rect x="306" y="124" width="9" height="12"/><rect x="334" y="118" width="9" height="12"/>
+            <rect x="348" y="122" width="9" height="12"/><rect x="362" y="120" width="9" height="12"/>
+            <rect x="390" y="124" width="9" height="12"/><rect x="404" y="118" width="9" height="12"/>
+            <rect x="418" y="122" width="9" height="12"/><rect x="432" y="120" width="9" height="12"/>
+          </g>
+          <g fill="var(--jank)">
+            <rect x="82" y="82" width="9" height="70"/><rect x="152" y="78" width="9" height="74"/>
+            <rect x="208" y="86" width="9" height="66"/><rect x="264" y="80" width="9" height="72"/>
+            <rect x="320" y="84" width="9" height="68"/><rect x="376" y="88" width="9" height="64"/>
+          </g>
+          <line x1="20" y1="116" x2="454" y2="116" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 4" opacity=".7"/>
+          <text x="452" y="111" font-size="11" text-anchor="end" opacity=".7">16.7 ms</text>
+
+          <g stroke="var(--ui)" fill="none" stroke-width="1.4">
+            <rect x="482" y="80" width="192" height="24" rx="12"/>
+            <rect x="482" y="114" width="192" height="24" rx="12"/>
+          </g>
+          <text x="578" y="96"  text-anchor="middle" font-size="12" fill="var(--ui)">Enhance Tracing ▾</text>
+          <text x="578" y="130" text-anchor="middle" font-size="12" fill="var(--ui)">More debugging options ▾</text>
+
+          <g font-size="13">
+            <rect x="14" y="176" width="118" height="24" rx="4" fill="var(--ui-wash)" stroke="var(--ui)" stroke-width="1.4"/>
+            <text x="73" y="192" text-anchor="middle" fill="var(--ui)" font-weight="700">Frame Analysis</text>
+            <text x="152" y="192" opacity=".5">Timeline Events</text>
+          </g>
+          <g stroke="currentColor" fill="none" stroke-width="1.4" opacity=".45">
+            <rect x="14" y="208" width="672" height="114" rx="6"/>
+          </g>
+          <g opacity=".35" stroke="currentColor" stroke-width="8" stroke-linecap="round">
+            <line x1="30" y1="228" x2="300" y2="228"/><line x1="30" y1="252" x2="480" y2="252"/>
+            <line x1="30" y1="276" x2="220" y2="276"/><line x1="30" y1="300" x2="390" y2="300"/>
+          </g>
+
+          <g font-size="13" font-weight="700">
+            <circle cx="238" cy="56" r="11" fill="var(--ui)"/><text x="238" y="61" text-anchor="middle" fill="#fff">1</text>
+            <circle cx="86"  cy="66" r="11" fill="var(--jank)"/><text x="86" y="71" text-anchor="middle" fill="#fff">2</text>
+            <circle cx="73"  cy="164" r="11" fill="var(--ui)"/><text x="73" y="169" text-anchor="middle" fill="#fff">3</text>
+            <circle cx="578" cy="60" r="11" fill="var(--ui)"/><text x="578" y="65" text-anchor="middle" fill="#fff">4</text>
+          </g>
+        </svg>
+      </figure>
+      <div class="stack">
+        <ul class="plain tight sm">
+          <li><strong>1 · Flutter Frames chart</strong><br>One bar per frame, stacked as you interact.</li>
+          <li><strong>2 · A red bar</strong><br>A frame over budget. <em>Click it and details appear below.</em> This is your starting point.</li>
+          <li><strong>3 · Frame Analysis / Timeline Events</strong><br>The insides of the selected frame. Start with Frame Analysis.</li>
+          <li><strong>4 · Enhance Tracing / More debugging options</strong><br>Switches for when you need more detail. Touch them when you need them. <span class="dim">The latter only works in a debug build.</span></li>
+        </ul>
+        <div class="note">
+          <p class="sm">At first, “click one red bar” is enough. Learn the other buttons when you need them.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="Frame Analysis tab" data-accent="ui"
+  data-notes="Where beginners should open first. DevTools writes hints in English: ‘this part of this frame looks suspicious.’ Jumping into Timeline gets people lost. Hints aren’t perfect, but they’re enough to pick a direction.">
+  <div class="eyebrow"><b>05</b><span>Using the tools</span></div>
+  <h1>Frame Analysis — open this first</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <p class="lead">Select a red bar and DevTools <em>tells you, in words, what’s suspicious in that frame.</em></p>
+        <div class="card">
+          <h3>What shows up here</h3>
+          <ul class="tight sm plain">
+            <li>UI time and Raster time for that frame</li>
+            <li>Which stretch ate the time (build / layout / paint / raster)</li>
+            <li>Hints like “this widget’s build is expensive” or “a shader compiled”</li>
+            <li>Links to the matching spots</li>
+          </ul>
+        </div>
+        <div class="note">
+          <p class="sm">Sometimes there’s no hint, or it’s off. That’s when you open Timeline Events. <strong>Keep the order and you won’t get lost.</strong></p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>What you already know here</h2>
+        <div class="note good">
+          <p class="sm"><strong>Most of the time, you stop here</strong></p>
+          <p class="sm">If you know “UI is 42ms, build ate 38ms,” you just go read that code.</p>
+        </div>
+        <div class="note warm">
+          <p class="sm"><strong>When it isn’t enough</strong></p>
+          <p class="sm">Want the widget name? → <strong>Enhance Tracing</strong> (next)<br>Want the method? → <strong>CPU Profiler</strong></p>
+        </div>
+        <p class="sm dim">Recordings pile up. Hit the trash icon at the top of Performance, then measure again — the frame you care about is easier to find.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="Enhance Tracing" data-accent="ui"
+  data-notes="On = widget names in Timeline. On itself is expensive and makes numbers worse. Say it every time: ON only while hunting, OFF when done. Leave it on and your before/after is junk.">
+  <div class="eyebrow"><b>05</b><span>Using the tools</span></div>
+  <h1>Enhance Tracing puts names on the bars</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th style="width:38%">Switch</th><th>What then appears in Timeline</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Track Widget Builds</strong></td><td><code>build()</code> calls, <strong>with widget names</strong></td></tr>
+              <tr><td><strong>Track Layouts</strong></td><td>RenderObject layouts, including <code>intrinsics</code></td></tr>
+              <tr><td><strong>Track Paints</strong></td><td>RenderObject paints</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note bad">
+          <p><strong>Turning this on makes the app itself slower</strong></p>
+          <p class="sm">Recording the trace has a cost. <em>ON only while you hunt; OFF for any before/after.</em> Numbers taken while it’s on can’t be compared.</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>When to use it</h2>
+        <ul class="plain tight sm">
+          <li>UI thread is red, and Frame Analysis hints aren’t enough</li>
+          <li>You want to know which widget rebuilds every frame</li>
+          <li>You suspect list rows are building more often than they should</li>
+        </ul>
+        <h2 style="margin-top:0.6cqw">Steps</h2>
+        <ol class="tight sm">
+          <li>Enhance Tracing ▸ <strong>Track Widget Builds</strong> ON</li>
+          <li>Do the same gesture again</li>
+          <li>Select a red frame and open the <strong>Timeline Events</strong> tab</li>
+          <li>Read the widget names on the wide bars</li>
+          <li>When you’re done, <strong>turn it OFF</strong></li>
+        </ol>
+        <p class="sm dim">With Track Layouts on you may see a <code>$runtimeType intrinsics</code> bar. That’s extra layout just to measure height — pin the row height and it goes away.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="How to read Timeline Events" data-accent="ui"
+  data-notes="Reading it is one line: width = time, find the wide bars. Nested top to bottom; further down is the callee. Names you put in Timeline.startSync show up here — that’s the Extra hook.">
+  <div class="eyebrow"><b>05</b><span>Using the tools</span></div>
+  <h1>Timeline Events — width is time</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <figure>
+        <svg class="diagram" viewBox="0 0 660 210" role="img" aria-label="How to read Timeline Events. Horizontal is time; calls nest top to bottom. Frame → Animate, Build, Layout, Paint. The widest bar is a specific widget build under Build.">
+          <text x="0" y="14" font-size="12" opacity=".6">← time →</text>
+          <g stroke="currentColor" stroke-width="1" opacity=".25">
+            <line x1="0" y1="22" x2="660" y2="22"/>
+          </g>
+          <g stroke="none">
+            <rect x="0"   y="32" width="640" height="26" rx="3" fill="var(--ui)" opacity=".22"/>
+            <rect x="14"  y="64" width="90"  height="26" rx="3" fill="var(--ui)" opacity=".3"/>
+            <rect x="112" y="64" width="440" height="26" rx="3" fill="var(--ui)" opacity=".3"/>
+            <rect x="560" y="64" width="76"  height="26" rx="3" fill="var(--ui)" opacity=".3"/>
+            <rect x="120" y="96" width="60"  height="26" rx="3" fill="var(--ui)" opacity=".45"/>
+            <rect x="188" y="96" width="352" height="26" rx="3" fill="var(--jank)" opacity=".85"/>
+            <rect x="196" y="128" width="330" height="26" rx="3" fill="var(--jank)" opacity=".55"/>
+          </g>
+          <g font-size="12" fill="currentColor">
+            <text x="8"   y="49">Frame</text>
+            <text x="22"  y="81">Animate</text>
+            <text x="120" y="81">Build</text>
+            <text x="568" y="81">Paint</text>
+            <text x="128" y="113">AppBar</text>
+          </g>
+          <text x="196" y="113" font-size="12" fill="#fff" font-weight="700">TrackListPage.build</text>
+          <text x="204" y="145" font-size="12" fill="currentColor" font-weight="700">_expensiveScore</text>
+          <g stroke="var(--jank)" stroke-width="1.6" fill="none">
+            <path d="M540 109 L600 109 L600 176"/>
+            <path d="M596 170 L600 178 L604 170" fill="var(--jank)" stroke="none"/>
+          </g>
+          <text x="656" y="196" text-anchor="end" font-size="13" fill="var(--jank)" font-weight="700">Just find the widest bar</text>
+        </svg>
+        <figcaption>Calls nest top to bottom. Further down is the callee.</figcaption>
+      </figure>
+      <div class="stack">
+        <h2>Only two ways to read it</h2>
+        <ul class="plain tight sm">
+          <li><strong>Width = time spent.</strong> Ignore thin bars. Find the widest one</li>
+          <li><strong>Walk down.</strong> If a wide bar has an even wider child, that’s the real cause</li>
+        </ul>
+        <div class="note">
+          <p class="sm">With Enhance Tracing on, bars get <strong>widget names</strong>. Off, you only see coarse buckets like <code>Build</code>.</p>
+        </div>
+        <div class="note good">
+          <p class="sm">Put <code>Timeline.startSync('name')</code> in your code and that name shows up here. Handy when you want “how many ms is this?” <span class="dim">(covered in Extra)</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="More debugging options" data-accent="raster"
+  data-notes="The closer when Raster is red. Disable a whole class of drawing and see if it recovers. If it does, you’ve got the culprit. Say this every time: these switches only work in debug (service extensions register inside asserts, so they’re gray in profile). Isolate in debug, remeasure times in profile. What Raster draws is the same in debug, so hunting still works.">
+  <div class="eyebrow"><b>05</b><span>Using the tools</span></div>
+  <h1>Turn it off and see if it recovers</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <p class="lead">When Raster is red, <em>disable a whole class of drawing and see if it recovers.</em> You don’t touch a line of code.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th style="width:44%">Switch (More debugging options)</th><th>If OFF fixes it</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Render Clip layers</strong></td><td>Clipping. Drop <code>ClipRRect</code>, use <code>borderRadius</code></td></tr>
+              <tr><td><strong>Render Opacity layers</strong></td><td>Opacity. Set color alpha, or use <code>AnimatedOpacity</code></td></tr>
+              <tr><td><strong>Render Physical shape layers</strong></td><td>Shadows / elevation. Use fewer of them</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note bad">
+          <p><strong>These switches are debug-only</strong></p>
+          <p class="sm">In profile they’re gray and you can’t click them. <em>Isolate in debug; remeasure times in profile.</em> What Raster draws is the same in debug, so hunting still works.</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>What you’re doing is a binary search</h2>
+        <ol class="tight sm">
+          <li>You already measured in profile: <strong>Raster is red</strong></li>
+          <li>Relaunch with <code>--debug</code></li>
+          <li>Kill clips → still broken → clips are innocent</li>
+          <li>Kill opacity → <strong>recovers</strong> → that’s the culprit</li>
+          <li>Fix one place in code, <strong>go back to profile</strong>, measure again</li>
+        </ol>
+        <p class="sm dim">OFF will make it look broken. That’s fine. You’re watching Raster time, not looks.</p>
+        <div class="note">
+          <p class="sm"><strong>If no switch fixes it</strong><br>Suspect images. Are you showing a much larger image than the on-screen size? Did you set <code>cacheWidth</code> / <code>cacheHeight</code>? <span class="dim">(covered in Extra)</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="CPU Profiler" data-accent="ui"
+  data-notes="Last resort when UI is red. Four tabs; beginners only need Bottom Up. If they get Self vs Total, they can read it. The diagram shows nested calls where Self doesn’t match Total. Don’t forget to filter to their own package.">
+  <div class="eyebrow"><b>05</b><span>Using the tools</span></div>
+  <h1>CPU Profiler — down to the method</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <h3>Steps</h3>
+        <p class="sm"><strong>Record</strong> → do the slow gesture → <strong>Stop</strong>. UI-thread Dart only.</p>
+        <figure>
+          <svg class="diagram" viewBox="0 0 620 170" role="img" aria-label="Self time vs Total time. loadPage is 100ms, buildRows inside it is 98ms, expensiveScore inside that is 95ms. Only expensiveScore spends 95ms itself; the other two spend time in callees.">
+            <g stroke="none">
+              <rect x="8"  y="16" width="470" height="30" rx="4" fill="var(--ui)" opacity=".2"/>
+              <rect x="8"  y="16" width="10"  height="30" rx="2" fill="var(--ui)"/>
+              <rect x="26" y="56" width="452" height="30" rx="4" fill="var(--ui)" opacity=".3"/>
+              <rect x="26" y="56" width="14"  height="30" rx="2" fill="var(--ui)"/>
+              <rect x="44" y="96" width="430" height="30" rx="4" fill="var(--jank)" opacity=".9"/>
+            </g>
+            <g font-size="12" fill="currentColor">
+              <text x="24" y="36">loadPage()</text>
+              <text x="46" y="76">buildRows()</text>
+              <text x="490" y="36">Total 100ms / <tspan font-weight="700">Self 2ms</tspan></text>
+              <text x="490" y="76">Total 98ms / <tspan font-weight="700">Self 3ms</tspan></text>
+              <text x="490" y="116" fill="var(--jank)" font-weight="700">Total 95ms / Self 95ms</text>
+            </g>
+            <text x="56" y="116" font-size="12" fill="#fff" font-weight="700">expensiveScore()</text>
+            <text x="8" y="152" font-size="12" opacity=".7">Dark part = Self time (time the method itself spent)</text>
+          </svg>
+        </figure>
+        <div class="note">
+          <p class="sm"><strong>Total time</strong> = including callees. <strong>Self time</strong> = the method itself. <em>Worth fixing: methods with large Self time</em>.</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>Four tabs</h2>
+        <div class="tbl-wrap">
+          <table>
+            <tbody>
+              <tr><td style="width:36%"><strong>Bottom Up</strong></td><td>Start from expensive <strong>methods</strong>. <span style="color:var(--ui)">Here first</span></td></tr>
+              <tr><td><strong>Call Tree</strong></td><td>Follow the expensive <strong>path</strong> from the top</td></tr>
+              <tr><td><strong>Method Table</strong></td><td>Self / Total list. Sortable</td></tr>
+              <tr><td><strong>Flame Chart</strong></td><td>Call Tree as a picture</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note good">
+          <p class="sm"><strong>Do this first</strong><br>Filter to <strong>your package only</strong>. If you don’t, Flutter’s own methods bury yours.</p>
+        </div>
+        <p class="sm dim">Sample rate: Low 1,000Hz / Medium 4,000Hz (default) / High 20,000Hz. Finer is more accurate, but the app gets heavier and you can record for less time. Default is enough.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s5" data-title="Demo: sample_app" data-accent="ok"
+  data-notes="Live demo from here. Have sample_app running in profile. One switch in the top-right flips broken vs fixed, so you can A/B with DevTools open. First OFF, scroll, get red, read Frame Analysis. More debugging options is debug-only — switch to --debug if you want that isolation (or just say it if you’re short on time). Back to profile, flip ON, watch red go away. Demo ② if you have time.">
+  <div class="eyebrow"><b>05</b><span>Using the tools</span></div>
+  <h1>Try it</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+<pre><code>cd sample_app
+flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
+        <p class="sm">Every demo screen flips “broken” vs “fixed” with <strong>one switch in the top-right</strong>. You can A/B with DevTools still open.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th style="width:30%">Demo</th><th>Where it shows up</th></tr></thead>
+            <tbody>
+              <tr><td><strong>① Scroll jank</strong></td><td><span class="chip raster"><span class="swatch"></span>Raster</span> — <code>Opacity</code> / <code>saveLayer</code> / blur / shadows</td></tr>
+              <tr><td><strong>② The UI freezes</strong></td><td><span class="chip ui"><span class="swatch"></span>UI</span> — heavy sync work, not even one frame can paint</td></tr>
+              <tr><td><strong>③ Closed, but it never shrinks</strong></td><td><span class="chip jank"><span class="swatch"></span>Memory</span> — forgot <code>cancel()</code>. See it in <strong>Memory ▸ Diff</strong> <span class="dim">(Extra)</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>Demo steps</h2>
+        <ol class="tight sm">
+          <li>Leave the switch <strong>OFF</strong> and scroll the list hard</li>
+          <li><strong>Red bars</strong> appear in DevTools ▸ Performance</li>
+          <li>Click one red bar → read <strong>Frame Analysis</strong></li>
+          <li>Relaunch with <code>--debug</code>, turn Opacity / Clip OFF in <strong>More debugging options</strong><br><span class="dim">Debug-only. Once you’ve isolated it, go back to profile</span></li>
+          <li>Flip the app switch <strong>ON</strong> and do the same gesture again</li>
+          <li>Confirm the red is gone</li>
+        </ol>
+        <div class="note good">
+          <p class="sm"><strong>What to watch in ②</strong><br>The “frames painted” counter in the middle <em>stops</em> the moment you tap. Switch to <code>Isolate.run()</code> and it keeps going.</p>
+        </div>
+        <p class="sm dim">If the device is too fast to show red, raise <code>kTrackCount</code> and <code>kWorkIterations</code> in <code>lib/demo/janky_list_page.dart</code>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 6. Quiz ═══════════════ -->
+<section class="slide" data-sec="s6" data-title="Quiz (6 questions)" data-accent="ok"
+  data-notes="Every answer is already in the slides. Click a choice for right/wrong plus a note. If the room is large, take a show of hands first. About 90 seconds per question.">
+  <div class="eyebrow"><b>06</b><span>Quiz</span></div>
+  <h1>Six questions, then the answers</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <p class="lead">Every answer is already in the slides so far.<br>Click a choice and you’ll get the answer plus a note.</p>
+        <div class="note">
+          <p class="sm">Wrong is fine. These are <strong>the easy-to-miss bits</strong> on purpose.</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>What’s covered</h2>
+        <ul class="plain tight sm">
+          <li>Q1 — Before you measure</li>
+          <li>Q2 — Reading UI vs Raster</li>
+          <li>Q3 — How you build lists</li>
+          <li>Q4 — A common myth</li>
+          <li>Q5 — How to read the numbers</li>
+          <li>Q6 — Which tool first</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s6" data-title="Q1 Before you measure" data-accent="ok"
+  data-notes="Answer B. Debug is slow by design. Rushing a fix here means chasing a problem that may not exist.">
+  <div class="eyebrow"><b>06</b><span>Quiz</span><span>·</span><span>Q1 / 6</span></div>
+  <div class="body">
+    <div class="quiz-q">You launched with plain <code>flutter run</code> and list scroll hitches. What do you do first?</div>
+    <div class="cols-wide">
+      <div class="opts" data-quiz>
+        <button class="opt" type="button"><span class="mark">A</span><span>Sprinkle <code>const</code> everywhere</span></button>
+        <button class="opt" type="button" data-correct="true"><span class="mark">B</span><span>Relaunch with <code>--profile</code> and measure again</span></button>
+        <button class="opt" type="button"><span class="mark">C</span><span>Switch to <code>ListView.builder</code></span></button>
+        <button class="opt" type="button"><span class="mark">D</span><span>Reboot the device and see</span></button>
+      </div>
+      <div class="answer">
+        <div class="note good">
+          <p><strong>Answer — B</strong></p>
+          <p class="sm">Debug runs JIT, plus asserts and debug checks. <strong>Slow is by design</strong>. Until you remeasure in profile, that hitch <em>may not exist in production</em>.</p>
+          <p class="sm dim">Chasing a problem that isn’t there is the most expensive way to spend time.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s6" data-title="Q2 Reading UI vs Raster" data-accent="ok"
+  data-notes="Answer C. Repeat: not one line of Dart runs on the Raster thread. Mix this up and you’ll stare at CPU Profiler forever and find nothing.">
+  <div class="eyebrow"><b>06</b><span>Quiz</span><span>·</span><span>Q2 / 6</span></div>
+  <div class="body">
+    <div class="quiz-q">DevTools shows only <strong>Raster</strong> time over budget. What do you suspect first?</div>
+    <div class="cols-wide">
+      <div class="opts" data-quiz>
+        <button class="opt" type="button"><span class="mark">A</span><span>Heavy work inside <code>build()</code></span></button>
+        <button class="opt" type="button"><span class="mark">B</span><span><code>setState()</code> being called too high</span></button>
+        <button class="opt" type="button" data-correct="true"><span class="mark">C</span><span>Too much <code>Opacity</code>, clipping, blur, or shadows</span></button>
+        <button class="opt" type="button"><span class="mark">D</span><span>A slow API response</span></button>
+      </div>
+      <div class="answer">
+        <div class="note good">
+          <p><strong>Answer — C</strong></p>
+          <p class="sm">On the Raster thread, <em>not one line of Dart runs.</em> A and B are irrelevant. Suspect drawing that forces <code>saveLayer()</code> (<code>Opacity</code> / <code>ClipRRect(antiAliasWithSaveLayer)</code> / <code>BackdropFilter</code>), plus shadows and huge images.</p>
+          <p class="sm dim">Mix this up and you’ll stare at CPU Profiler forever and find nothing.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s6" data-title="Q3 How you build lists" data-accent="ok"
+  data-notes="Answer B. ListView(children:) builds a widget for every row. builder builds only what’s on screen. If row height is fixed, itemExtent also cuts layout work.">
+  <div class="eyebrow"><b>06</b><span>Quiz</span><span>·</span><span>Q3 / 6</span></div>
+  <div class="body">
+    <div class="quiz-q">You built a 1000-row list with <code>ListView(children: items.map(...).toList())</code>. What’s the problem?</div>
+    <div class="cols-wide">
+      <div class="opts" data-quiz>
+        <button class="opt" type="button"><span class="mark">A</span><span>Scroll stops halfway</span></button>
+        <button class="opt" type="button" data-correct="true"><span class="mark">B</span><span>You build all 1000 rows every time, including ones off-screen</span></button>
+        <button class="opt" type="button"><span class="mark">C</span><span>It leaks memory</span></button>
+        <button class="opt" type="button"><span class="mark">D</span><span>Nothing’s wrong</span></button>
+      </div>
+      <div class="answer">
+        <div class="note good">
+          <p><strong>Answer — B</strong></p>
+          <p class="sm"><code>ListView.builder</code> builds <em>only the rows on screen</em>. 1000 or 10,000 rows — the cost per frame stays the same.</p>
+          <p class="sm">If row height is fixed, also set <code>itemExtent</code>. The extra layout just to measure height goes away.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s6" data-title="Q4 A common myth" data-accent="ok"
+  data-notes="Answer B. const means ‘don’t rebuild me’ — it does not make drawing cheaper. Sprinkle const while Raster is red and the number won’t move 1ms. Cleanest example of measure-then-fix.">
+  <div class="eyebrow"><b>06</b><span>Quiz</span><span>·</span><span>Q4 / 6</span></div>
+  <div class="body">
+    <div class="quiz-q">“Adding <code>const</code> makes it faster.” Is that true?</div>
+    <div class="cols-wide">
+      <div class="opts" data-quiz>
+        <button class="opt" type="button"><span class="mark">A</span><span>Yes. Add it everywhere you can</span></button>
+        <button class="opt" type="button" data-correct="true"><span class="mark">B</span><span>It can cut rebuilds, but it doesn’t make drawing cheaper</span></button>
+        <button class="opt" type="button"><span class="mark">C</span><span>It’s completely pointless</span></button>
+        <button class="opt" type="button"><span class="mark">D</span><span>Release ignores it, so it does nothing</span></button>
+      </div>
+      <div class="answer">
+        <div class="note good">
+          <p><strong>Answer — B</strong></p>
+          <p class="sm"><code>const</code> means “don’t rebuild this widget.” It can <strong>cut UI-thread work</strong>, but <em>it does not make the painted picture cheaper.</em></p>
+          <p class="sm">Sprinkle <code>const</code> while Raster is red and the number won’t move 1ms. Adding it is a good habit — <strong>as a jank fix, measure first</strong>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s6" data-title="Q5 How to read the numbers" data-accent="ok"
+  data-notes="Answer B. Averages lie. People don’t remember 294 smooth frames — they remember the 6 that overshot. Watch over-budget count and worst.">
+  <div class="eyebrow"><b>06</b><span>Quiz</span><span>·</span><span>Q5 / 6</span></div>
+  <div class="body">
+    <div class="quiz-q">You measured 300 frames. Mean frame time is <span class="metric">8.1ms</span>. Can you say this screen is fine?</div>
+    <div class="cols-wide">
+      <div class="opts" data-quiz>
+        <button class="opt" type="button"><span class="mark">A</span><span>Half the budget, so it’s fine</span></button>
+        <button class="opt" type="button" data-correct="true"><span class="mark">B</span><span>You can’t tell from the mean. Look at over-budget count and worst</span></button>
+        <button class="opt" type="button"><span class="mark">C</span><span>If the mean is under 16.7ms, it’s always fine</span></button>
+        <button class="opt" type="button"><span class="mark">D</span><span>300 frames isn’t enough; measure longer</span></button>
+      </div>
+      <div class="answer">
+        <div class="note good">
+          <p><strong>Answer — B</strong></p>
+          <p class="sm">A mean of 8.1ms can still hide six <span class="metric" style="color:var(--jank)">92ms</span> frames. Users will call it a slow app.</p>
+          <p class="sm"><em>People don’t remember 294 smooth frames — only the 6 that overshot.</em> Watch <strong>over-budget count</strong> and <strong>worst</strong>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="s6" data-title="Q6 Which tool first" data-accent="ok"
+  data-notes="Answer B. Order matters. Frame Analysis → Enhance Tracing for widget names → CPU Profiler for methods. Open CPU Profiler first and you drown.">
+  <div class="eyebrow"><b>06</b><span>Quiz</span><span>·</span><span>Q6 / 6</span></div>
+  <div class="body">
+    <div class="quiz-q">The UI thread went over 16.7ms. What do you open next?</div>
+    <div class="cols-wide">
+      <div class="opts" data-quiz>
+        <button class="opt" type="button"><span class="mark">A</span><span>Memory view, hunt for a leak</span></button>
+        <button class="opt" type="button" data-correct="true"><span class="mark">B</span><span>Select that frame, open Frame Analysis. CPU Profiler if that’s not enough</span></button>
+        <button class="opt" type="button"><span class="mark">C</span><span>App Size tool, check how big the app is</span></button>
+        <button class="opt" type="button"><span class="mark">D</span><span>Network view, check traffic</span></button>
+      </div>
+      <div class="answer">
+        <div class="note good">
+          <p><strong>Answer — B</strong></p>
+          <p class="sm">There’s an order. <strong>Frame Analysis hints</strong> → if that’s not enough, <strong>Enhance Tracing</strong> for widget names → then <strong>CPU Profiler</strong> for methods.</p>
+          <p class="sm dim">Open CPU Profiler first and Flutter’s own methods bury you. Walk down from the coarse view.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 7. Takeaways ═══════════════ -->
+<section class="slide" data-sec="s7" data-title="What to do tomorrow" data-accent="ok"
+  data-notes="Don’t overreach. Today’s finish line is ‘open DevTools and find a red bar.’ Do these three, and nothing more today. Extra if you have time.">
+  <div class="eyebrow"><b>07</b><span>Takeaways</span></div>
+  <h1>Tomorrow, only three things</h1>
+  <div class="body">
+    <div class="cols3">
+      <div class="card" style="border-top:0.28cqw solid var(--ui)">
+        <h3>01</h3>
+        <h2>Open</h2>
+        <p class="sm">Launch your app with <code>flutter run --profile</code> and open DevTools. That’s it.</p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--raster)">
+        <h3>02</h3>
+        <h2>Touch</h2>
+        <p class="sm">Scroll the most-used screen for 30 seconds. See if Flutter Frames goes red.</p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--ok)">
+        <h3>03</h3>
+        <h2>Read</h2>
+        <p class="sm">If you see red, click one bar and read Frame Analysis. <strong>You don’t have to fix it.</strong></p>
+      </div>
+    </div>
+    <div class="note good">
+      <p><em>Today’s finish line is ‘you can find it,’ not ‘you can fix it.’</em> If you can find it, you can look up the fix. Until then, you don’t even know what to search.</p>
+    </div>
+    <p class="sm dim">From here, <span class="kbd">→</span> goes to Extra. Memory, isolating the network, App Size, and a symptom cheat sheet.</p>
+  </div>
+</section>
+
+<!-- ═══════════════ Extra ═══════════════ -->
+<section class="slide" data-sec="bonus" data-title="Extra: from here on" data-accent="raster"
+  data-notes="For leftover time. Don’t do it all — pick 2–3 slides that match the room. Jumping to a question is best. g opens the index.">
+  <div class="eyebrow"><b>Extra</b><span>If you have time</span></div>
+  <h1>From here, extras</h1>
+  <div class="body">
+    <div class="cols3">
+      <div class="stack">
+        <h2>A bit more mechanism</h2>
+        <ul class="plain tight sm">
+          <li><strong>build → layout → paint</strong> — inside the UI thread</li>
+          <li><strong>Names on the left of Timeline</strong> — <code>1.ui</code> / <code>DartWorker</code> / <code>PipelineItem</code></li>
+        </ul>
+      </div>
+      <div class="stack">
+        <h2>Measure more</h2>
+        <ul class="plain tight sm">
+          <li><strong>Memory</strong> — find what never shrinks after you close a screen</li>
+          <li><strong>App Size</strong> — what made the app fat</li>
+          <li><strong>Add your own marks</strong> — <code>Timeline.startSync</code></li>
+          <li><strong>Keep measuring in production</strong> — <code>addTimingsCallback</code></li>
+          <li><strong>Isolate whether it’s the network</strong> — Overlay / Network / mocks</li>
+        </ul>
+      </div>
+      <div class="stack">
+        <h2>Fixes that usually work</h2>
+        <ul class="plain tight sm">
+          <li><strong>Move heavy work off the UI thread</strong> — <code>Isolate.run()</code></li>
+          <li><strong>Isolate a repaint</strong> — <code>RepaintBoundary</code></li>
+          <li><strong>Decode images smaller</strong> — <code>cacheWidth</code></li>
+          <li><strong>Symptom cheat sheet</strong></li>
+          <li><strong>Most web articles are outdated</strong> — pre-Impeller</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note warm">
+      <p class="sm">You don’t have to do it all. Pick what you care about. <span class="kbd">g</span> opens the index so you can jump.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="build → layout → paint" data-accent="raster"
+  data-notes="What the bars under Frame in Timeline Events actually are. Order is fixed: Animate → Build → Layout → Paint. Paint is the most misunderstood — it does not fill pixels, it only records how to draw. So Opacity/blur cost shows up on Raster, not in the paint bar. Say that every time.">
+  <div class="eyebrow"><b>Extra</b><span>If you have time</span></div>
+  <h1>Inside the UI thread,<br>four jobs run in order</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <figure>
+        <svg class="diagram" viewBox="0 0 520 400" role="img" aria-label="One UI-thread frame: starts on vsync, then Animate, Build, Layout, Paint. The finished layer tree is handed to Raster and shown on screen.">
+          <defs>
+            <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+
+          <g stroke="var(--ui)" stroke-width="1.5" fill="none" opacity=".55">
+            <path d="M32 52 L22 52 L22 272 L32 272"/>
+          </g>
+          <text x="10" y="162" text-anchor="middle" transform="rotate(-90 10 162)" font-size="11" fill="var(--ui)" font-weight="700">UI thread (Dart)</text>
+
+          <g stroke="currentColor" fill="none" stroke-width="1.4" opacity=".45" stroke-dasharray="4 4">
+            <rect x="44" y="4" width="466" height="32" rx="7"/>
+          </g>
+          <text x="277" y="25" text-anchor="middle" font-size="12" opacity=".6">Vsync — the display asking for the next frame</text>
+          <g stroke="currentColor" opacity=".5"><line x1="277" y1="36" x2="277" y2="50" marker-end="url(#ar3)" stroke-width="1.4"/></g>
+
+          <g stroke="var(--ui)" fill="var(--ui-wash)" stroke-width="1.8">
+            <rect x="44" y="52" width="466" height="46" rx="8"/>
+            <rect x="44" y="110" width="466" height="46" rx="8"/>
+            <rect x="44" y="168" width="466" height="46" rx="8"/>
+            <rect x="44" y="226" width="466" height="46" rx="8"/>
+          </g>
+          <g text-anchor="middle">
+            <text x="277" y="73"  font-size="14" fill="var(--ui)" font-weight="700">Animate</text>
+            <text x="277" y="90"  font-size="11" opacity=".75">Advance animation values by one tick</text>
+            <text x="277" y="131" font-size="14" fill="var(--ui)" font-weight="700">Build</text>
+            <text x="277" y="148" font-size="11" opacity=".75">Rebuild only dirty widgets</text>
+            <text x="277" y="189" font-size="14" fill="var(--ui)" font-weight="700">Layout</text>
+            <text x="277" y="206" font-size="11" opacity=".75">Constraints go down, sizes come back up</text>
+            <text x="277" y="247" font-size="14" fill="var(--ui)" font-weight="700">Paint</text>
+            <text x="277" y="264" font-size="11" opacity=".75">Record “how to draw” into the layer tree</text>
+          </g>
+          <g stroke="var(--ui)" opacity=".8" stroke-width="1.6">
+            <line x1="277" y1="98"  x2="277" y2="108" marker-end="url(#ar3)"/>
+            <line x1="277" y1="156" x2="277" y2="166" marker-end="url(#ar3)"/>
+            <line x1="277" y1="214" x2="277" y2="224" marker-end="url(#ar3)"/>
+          </g>
+
+          <g stroke="var(--raster)" stroke-width="2"><line x1="277" y1="272" x2="277" y2="298" marker-end="url(#ar3)"/></g>
+          <text x="289" y="290" font-size="11" fill="var(--raster)" font-weight="700">Layer tree</text>
+
+          <g stroke="var(--raster)" fill="var(--raster-wash)" stroke-width="2">
+            <rect x="44" y="300" width="466" height="46" rx="8"/>
+          </g>
+          <text x="277" y="321" text-anchor="middle" font-size="14" fill="var(--raster)" font-weight="700">Raster thread</text>
+          <text x="277" y="338" text-anchor="middle" font-size="11" opacity=".75">Paint on the GPU from that record</text>
+
+          <g stroke="var(--raster)" stroke-width="2"><line x1="277" y1="346" x2="277" y2="356" marker-end="url(#ar3)"/></g>
+          <g stroke="currentColor" fill="none" stroke-width="1.5"><rect x="192" y="358" width="170" height="34" rx="7"/></g>
+          <text x="277" y="380" text-anchor="middle" font-size="13" font-weight="700">Screen</text>
+        </svg>
+      </figure>
+      <div class="stack">
+        <div class="note">
+          <p class="sm"><strong>Build</strong> — rebuilds only Elements marked dirty by <code>setState()</code>. Not the whole screen. <em>When it’s slow, you’re computing inside <code>build()</code>, or <code>setState()</code> is too high.</em></p>
+        </div>
+        <div class="note">
+          <p class="sm"><strong>Layout</strong> — <strong>constraints</strong> go parent → child, <strong>sizes</strong> come back child → parent. Usually one round trip, so it’s fast. <code>intrinsics</code> (extra work just to measure height) makes it slow.</p>
+        </div>
+        <div class="note warm">
+          <p class="sm"><strong>Paint</strong> — <em>not one pixel is filled here.</em> It only records how to draw. Raster does the filling, so Opacity and blur cost shows up <strong>on Raster, not in this bar</strong>.</p>
+        </div>
+        <p class="sm dim">In Timeline Events these sit under the <code>Frame</code> bar, in this order. Whichever is widest tells you where the UI thread is heavy.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="Names on the left of Timeline" data-accent="raster"
+  data-notes="Opening Timeline Events dumps a wall of names. You only need 1.ui and 1.raster. The rest are guidelines when you’re asking ‘why am I waiting?’ If DartWorker is wide and 1.ui is thin, moving work to an isolate worked.">
+  <div class="eyebrow"><b>Extra</b><span>If you have time</span></div>
+  <h1>Names on the left of Timeline</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="card" style="border-top:0.28cqw solid var(--ui)">
+        <h3>Thread tracks</h3>
+        <ul class="tight sm plain">
+          <li><code>1.ui</code> — the <strong>UI thread</strong>. Where Dart runs. You’ll see <code>VsyncProcessCallback</code> / <code>Animator::BeginFrame</code> / <code>BUILD</code>. <strong>Start here</strong></li>
+          <li><code>1.raster</code> — the <strong>Raster thread</strong>. Turns the layer tree into GPU commands. <strong>Then here</strong></li>
+          <li><code>1.io</code> — image decode and similar. Sometimes missing</li>
+          <li><code>DartWorker</code> — Dart worker threads. Work you sent to <code>Isolate.run()</code> / <code>compute()</code> lands here</li>
+        </ul>
+        <p class="sm dim">The number after the name is a thread id. It changes every run and means nothing.</p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--raster)">
+        <h3>Event tracks</h3>
+        <ul class="tight sm plain">
+          <li><code>Frame</code> — one frame’s span. <strong>Width is the frame time</strong></li>
+          <li><code>Frame Request Pending</code> — wait from “please draw” until work actually starts</li>
+          <li><code>PipelineItem</code> / <code>PipelineProduce</code> — handing the layer tree from UI to Raster. Top is what UI built, bottom is what Raster received</li>
+          <li><code>PlatformChannel ScheduleResult</code> — a native <code>MethodChannel</code> result came back</li>
+          <li><code>Process 9116</code> — a process-level heading. For folding; nothing inside</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note">
+      <p class="sm">You only need <code>1.ui</code> and <code>1.raster</code>. <em>If <code>DartWorker</code> is wide and <code>1.ui</code> is thin, moving the heavy work off succeeded.</em></p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="Memory — find what never shrinks" data-accent="raster"
+  data-notes="Memory, not time. Memory ▸ Diff is the most useful bit in practice. Snapshot before open, then after open-and-close, and diff. A class that stays grown means someone still holds it. Demo ③ in sample_app is fast live. Taking a snapshot also GCs — compare after you snap.">
+  <div class="eyebrow"><b>Extra</b><span>If you have time</span></div>
+  <h1>Memory — find “I closed it, it never shrinks”</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <h2>How to use Heap Snapshot and Diff</h2>
+        <ol class="tight sm">
+          <li>Open DevTools ▸ <strong>Memory</strong></li>
+          <li>Take one snapshot <strong>before</strong> opening the suspect screen</li>
+          <li>Open the screen, close it (repeat 2–3 times)</li>
+          <li>Take another snapshot</li>
+          <li>Compare the two in the <strong>Diff</strong> tab</li>
+        </ol>
+        <div class="note">
+          <p class="sm">If a class’s <strong>instance count stays up</strong> after open-and-close, someone is still holding those objects.</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>Usual causes</h2>
+        <ul class="plain tight sm">
+          <li>A <code>StreamSubscription</code> you never <code>cancel()</code></li>
+          <li>An <code>AnimationController</code> / <code>TextEditingController</code> you never <code>dispose()</code></li>
+          <li>Stuff left in a global <code>Map</code> or <code>List</code></li>
+          <li>A callback holding <code>context</code> or a State</li>
+        </ul>
+        <div class="note good">
+          <p class="sm"><strong>Try it in <code>sample_app</code> demo ③</strong><br>Each detail screen allocates 2MB and subscribes to a global <code>StreamController</code> without <code>cancel()</code>. Hit “open and close 10 times,” then Diff: ten <code>DetailPayload</code>s (~20MB) stay and never come back.</p>
+        </div>
+        <p class="sm dim">There’s also <strong>leak_tracker</strong>, which can catch missed <code>dispose</code>s in tests. Easiest first step: Diff, and ask “did it grow?”</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="App Size — what made it fat" data-accent="raster"
+  data-notes="The occasional pre-release check. Build with --analyze-size, open the JSON in DevTools App Size. Usually images, fonts, or a fatter-than-you-thought dependency.">
+  <div class="eyebrow"><b>Extra</b><span>If you have time</span></div>
+  <h1>App Size — what made the app fat</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+<pre><code><span class="c"># Android</span>
+flutter build apk <span class="s">--analyze-size</span> \
+  --target-platform android-arm64
+
+<span class="c"># iOS</span>
+flutter build ipa <span class="s">--analyze-size</span></code></pre>
+        <p class="sm">When the build finishes you get an analysis JSON. Open it in DevTools ▸ <strong>App Size</strong>.</p>
+        <div class="note">
+          <p class="sm">The <strong>Diff</strong> tab compares two builds. Use it for “what added 4MB in this release?”</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>Usually one of these three</h2>
+        <ul class="plain tight sm">
+          <li><strong>Image assets</strong> — a 4K PNG shipped as-is, or every density when @3x would do</li>
+          <li><strong>Fonts</strong> — every weight and every glyph bundled</li>
+          <li><strong>Dependencies</strong> — a huge library for a tiny feature</li>
+        </ul>
+        <p class="sm dim">Size hits download rate and post-install uninstalls. You don’t need it every time — an occasional pre-release check is enough.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="Add your own marks" data-accent="raster"
+  data-notes="When DevTools isn’t enough, name the interval yourself. heavy_work_page in sample_app already has it — you can show an aggregate bar in Timeline Events. For async spans, use TimelineTask.">
+  <div class="eyebrow"><b>Extra</b><span>If you have time</span></div>
+  <h1>Name a span in your own code</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="stack">
+        <h3>A sync span</h3>
+<pre><code><span class="k">import</span> <span class="s">'dart:developer'</span> <span class="k">as</span> developer;
+
+developer.Timeline.startSync(<span class="s">'aggregate'</span>);
+<span class="k">final</span> result = aggregate(records);
+developer.Timeline.finishSync();</code></pre>
+        <h3 style="margin-top:1cqw">An async span</h3>
+<pre><code><span class="c">// start and finish land on different frames,</span>
+<span class="c">// so use TimelineTask</span>
+<span class="k">final</span> task = developer.TimelineTask()
+  ..start(<span class="s">'aggregate (Isolate.run)'</span>);
+<span class="k">final</span> result = <span class="k">await</span> Isolate.run(job);
+task.finish();</code></pre>
+      </div>
+      <div class="stack">
+        <h2>Where it shows up</h2>
+        <p class="sm">The name shows up as a bar in DevTools ▸ Performance ▸ <strong>Timeline Events</strong>. Width is time spent.</p>
+        <div class="note good">
+          <p class="sm">It’s already in <code>sample_app</code> at <code>lib/demo/heavy_work_page.dart</code>. Tap “aggregate,” then open Timeline Events — you’ll see <code>aggregate (main isolate)</code>.</p>
+        </div>
+        <div class="note bad">
+          <p class="sm"><strong>Don’t over-mark.</strong> Hundreds per frame and the recording itself gets expensive — the numbers lie. Mark only the spans you care about, coarsely.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="Keep measuring in production" data-accent="raster"
+  data-notes="You can only measure your own device at your desk. What happens on real users’ phones needs this. Send the values to your analytics. Sending everything is itself a load — sample.">
+  <div class="eyebrow"><b>Extra</b><span>If you have time</span></div>
+  <h1>Keep measuring on users’ devices</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+<pre><code><span class="k">import</span> <span class="s">'package:flutter/scheduler.dart'</span>;
+
+SchedulerBinding.instance.addTimingsCallback((timings) {
+  <span class="k">for</span> (<span class="k">final</span> t <span class="k">in</span> timings) {
+    <span class="k">final</span> build  = t.buildDuration.inMicroseconds / <span class="s">1000</span>;
+    <span class="k">final</span> raster = t.rasterDuration.inMicroseconds / <span class="s">1000</span>;
+    <span class="k">if</span> (build &gt; <span class="s">16.7</span> || raster &gt; <span class="s">16.7</span>) {
+      <span class="c">// send to analytics (sample it)</span>
+      reportJank(build, raster);
+    }
+  }
+});</code></pre>
+        <p class="sm">Finished-frame timings arrive in a batch callback. <code>buildDuration</code> is UI, <code>rasterDuration</code> is Raster.</p>
+      </div>
+      <div class="stack">
+        <h2>Why you need it</h2>
+        <p class="sm">At your desk you can only measure <strong>your own device</strong>. A three-year-old phone, a slow network, and 5000 photos — you won’t reproduce that on a dev machine.</p>
+        <div class="note bad">
+          <p class="sm"><strong>Don’t send everything.</strong> Shipping every frame makes the send itself a source of jank. Send only frames over the threshold, and sample those.</p>
+        </div>
+        <div class="note">
+          <p class="sm">Start by collecting just “share of over-budget frames” per screen. Then you can see whether a fix moved the number.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="Waiting vs jank are different" data-accent="raster"
+  data-notes="Users mash waiting and jank into one ‘slow.’ If you don’t split them you’ll chase an API with jank tools, or file a network ticket while Overlay is bright red. Say this: Dart HTTP does not block the UI thread on await. If it hitches while waiting, it isn’t the request. If it freezes only after the response, jsonDecode or a huge setState.">
+  <div class="eyebrow"><b>Extra</b><span>If you have time</span></div>
+  <h1>“Slow” is two diseases.<br>Waiting and jank are not the same</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="card" style="border-top:0.28cqw solid var(--ok)">
+        <h3>Waiting — network / server</h3>
+        <h2>The UI moves. Content doesn’t show</h2>
+        <ul class="tight sm plain">
+          <li>The spinner spins. You can still scroll</li>
+          <li>Performance Overlay stays <strong>green</strong></li>
+          <li>Culprit: link, server, serial APIs, a huge response</li>
+        </ul>
+        <p class="sm dim">→ Next: <strong>Network</strong></p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--jank)">
+        <h3>Jank — frames</h3>
+        <h2>Your finger leaves the UI behind</h2>
+        <ul class="tight sm plain">
+          <li>Animations skip. The list catches</li>
+          <li>Overlay bars go <strong>red</strong></li>
+          <li>Culprit: UI / Raster (what the main talk covered)</li>
+        </ul>
+        <p class="sm dim">→ Close Network, go back to Performance</p>
+      </div>
+    </div>
+    <div class="cols">
+      <div class="note warm">
+        <p class="sm"><code>await http.get(...)</code> does <em>not block the UI thread</em> while it waits. If it hitches while the spinner spins, it isn’t the request — it’s drawing or compute running in the meantime.</p>
+      </div>
+      <div class="note bad">
+        <p class="sm"><strong>A common mix-up.</strong> Sync <code>jsonDecode</code> or a huge <code>setState</code> right after the response looks like “the API is slow.” The freeze is <em>after</em> it returns, not during the request.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="Isolate whether it’s the network" data-accent="raster"
+  data-notes="The point is: confirm with an experiment. Faster than staring at numbers: delete the network, or slow it down. Mock at 0ms and still red → not the network. Slow the link and Overlay stays green → it is the network. Red only right after completion → jsonDecode or a huge setState. sample_app has no network demo — talk plus their Network tab is enough. Slow images: suspect 1.io (decode) and Raster, then jump to cacheWidth.">
+  <div class="eyebrow"><b>Extra</b><span>If you have time</span></div>
+  <h1>Is the network slow? Turn it off and see</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <h2>Three moves to isolate it</h2>
+        <ol class="tight sm">
+          <li><strong>Reproduce with Overlay on</strong><br>You wait, and it stays green → close the jank tools</li>
+          <li><strong>Look at DevTools ▸ Network</strong><br>Long Waiting → server or link. UI goes red right after completion → parse or rebuild</li>
+          <li><strong>Delete the network, slow it down, measure again</strong></li>
+        </ol>
+        <div class="note good">
+          <p class="sm"><strong>Experiment #3</strong><br>Mock the response at 0ms and it still hitches → <em>not the network</em>.<br>Slow it with Charles or Network Link Conditioner and Overlay stays green → <em>the network</em>.</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>Observation → conclusion</h2>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th style="width:52%">Observation</th><th>Conclusion</th></tr></thead>
+            <tbody>
+              <tr><td>Overlay green, long Waiting in Network</td><td>Link or server</td></tr>
+              <tr><td>Overlay green, many serial requests</td><td>Waterfall</td></tr>
+              <tr><td>UI red only right after the response</td><td><code>jsonDecode</code> / a huge rebuild</td></tr>
+              <tr><td>Still red with a 0ms mock</td><td>Not the network</td></tr>
+              <tr><td>Only images are slow. <code>1.io</code> is wide</td><td>Decode (<code>cacheWidth</code>)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="sm dim">In Timeline, a long thin empty UI span = waiting. A wide <code>BUILD</code> right after = work after the response.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="Move heavy work off the UI thread" data-accent="raster"
+  data-notes="The strongest move when UI is red. Don’t toss everything at an isolate — the copy has a cost. Rule of thumb: work over a few tens of ms. Demo ② in sample_app is the before/after.">
+  <div class="eyebrow"><b>Extra</b><span>If you have time</span></div>
+  <h1>Move heavy work off the UI thread</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="stack">
+        <h3>Before — the UI thread stops</h3>
+<pre><code><span class="k">final</span> data = jsonDecode(hugeJson);
+<span class="k">final</span> result = aggregate(data);
+setState(() =&gt; _result = result);</code></pre>
+        <h3 style="margin-top:1cqw">After — another isolate</h3>
+<pre><code><span class="k">import</span> <span class="s">'dart:isolate'</span>;
+
+<span class="c">// keep job as a top-level function</span>
+<span class="k">final</span> result = <span class="k">await</span> Isolate.run(
+  () =&gt; aggregate(jsonDecode(hugeJson)),
+);
+setState(() =&gt; _result = result);</code></pre>
+        <p class="sm dim"><code>compute()</code> does the same thing, in an older style. For new code, <code>Isolate.run()</code> is enough.</p>
+      </div>
+      <div class="stack">
+        <h2>A rough split</h2>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th style="width:40%">How heavy</th><th>What to do</th></tr></thead>
+            <tbody>
+              <tr><td>A few ms</td><td>Leave it</td></tr>
+              <tr><td>10–tens of ms</td><td>Cache the result / take it out of <code>build</code></td></tr>
+              <tr><td>Tens of ms or more</td><td><strong>Send it to <code>Isolate.run()</code></strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note bad">
+          <p class="sm"><strong>Don’t toss everything over.</strong> Data is copied across the isolate boundary, and that copy costs. Tiny work gets slower, not faster.</p>
+        </div>
+        <div class="note good">
+          <p class="sm">Demo ② in <code>sample_app</code> is this Before / After, flipped with one switch.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="RepaintBoundary" data-accent="raster"
+  data-notes="When it works, it works dramatically. Overuse eats GPU memory and backfires. Confirm wasted repaints with debugRepaintRainbowEnabled first. Sprinkling it without measuring is the classic own-goal.">
+  <div class="eyebrow"><b>Extra</b><span>If you have time</span></div>
+  <h1>RepaintBoundary — measure the spot first</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <h2>What it does</h2>
+        <p class="sm">It cuts the wrapped subtree into <strong>its own layer</strong>. Neighbors can repaint without redrawing it.</p>
+        <div class="note good">
+          <p class="sm"><strong>When it helps</strong><br>A still, complex picture (map, chart, a long list row) sits next to something that keeps moving. You only need to redraw the moving part — but everything redraws.</p>
+        </div>
+        <div class="note bad">
+          <p class="sm"><strong>When it doesn’t — or backfires</strong><br>Each extra layer costs GPU memory. Wrap something that changes every frame and you don’t save any redraws. <em>“Just put it everywhere” backfires.</em></p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>Check before you add one</h2>
+<pre><code><span class="k">import</span> <span class="s">'package:flutter/rendering.dart'</span>;
+
+<span class="k">void</span> main() {
+  debugRepaintRainbowEnabled = <span class="k">true</span>;
+  runApp(<span class="k">const</span> MyApp());
+}</code></pre>
+        <p class="sm">Repainted regions get a border that changes color every frame. <strong>Places that aren’t moving but still change color every frame</strong> are candidates.</p>
+        <div class="note">
+          <p class="sm">Debug-only. Take it out when you’re done checking.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="Decode images at display size" data-accent="raster"
+  data-notes="Raster is red, and Clip/Opacity are innocent — usually this. A 4000px photo shown as a 100px thumb still pays decode and memory for 4000px. cacheWidth often fixes it.">
+  <div class="eyebrow"><b>Extra</b><span>If you have time</span></div>
+  <h1>Decode images at the size you show</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <div class="note bad">
+          <p><strong>A common state</strong></p>
+          <p class="sm">A 4000×3000 photo shown as a 100×100 thumb.<br>→ Decode and memory still pay for <strong>4000×3000</strong>. About 48MB per image.</p>
+        </div>
+<pre><code><span class="c">// decode at the size you display</span>
+Image.network(
+  url,
+  <span class="s">cacheWidth</span>: <span class="s">200</span>,   <span class="c">// logical px × devicePixelRatio-ish</span>
+  width: <span class="s">100</span>,
+  height: <span class="s">100</span>,
+  fit: BoxFit.cover,
+)</code></pre>
+        <p class="sm">If you use an <code>ImageProvider</code> directly, wrap it in <code>ResizeImage(provider, width: 200)</code>.</p>
+      </div>
+      <div class="stack">
+        <h2>Also check</h2>
+        <ul class="plain tight sm">
+          <li>Asset images are actually the resolution you need</li>
+          <li>List rows aren’t creating a new <code>ImageProvider</code> every time (that kills the cache)</li>
+          <li>The placeholder isn’t using <code>Opacity</code> (use <code>FadeInImage</code>)</li>
+        </ul>
+        <div class="note">
+          <p class="sm">Raster is red, and Clip / Opacity / blur are innocent — <em>it’s usually images.</em></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="Symptom cheat sheet" data-accent="raster"
+  data-notes="The take-home slide. Print it and tape it to a desk. Read left to right and the next move is decided. Worth handing out on its own.">
+  <div class="eyebrow"><b>Extra</b><span>If you have time</span></div>
+  <h1>Symptom cheat sheet</h1>
+  <div class="body">
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:24%">Symptom</th><th style="width:12%">What’s red</th><th style="width:30%">Suspect</th><th style="width:34%">Move</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Scroll always hitches</td>
+            <td><span class="chip raster"><span class="swatch"></span>Raster</span></td>
+            <td>Per-row <code>Opacity</code> / clip / shadow / blur</td>
+            <td>Isolate in debug with More debugging options → corners via <code>borderRadius</code>, opacity via color alpha</td>
+          </tr>
+          <tr>
+            <td>Scroll always hitches</td>
+            <td><span class="chip ui"><span class="swatch"></span>UI</span></td>
+            <td>Work inside <code>build()</code> / building every row up front</td>
+            <td><code>ListView.builder</code> + <code>itemExtent</code>; move work to <code>initState</code></td>
+          </tr>
+          <tr>
+            <td>A tap freezes the UI for hundreds of ms</td>
+            <td><span class="chip ui"><span class="swatch"></span>UI</span></td>
+            <td>Heavy sync work (parse / aggregate / crypto)</td>
+            <td>Send it to <code>Isolate.run()</code></td>
+          </tr>
+          <tr>
+            <td>Only image-heavy screens are slow</td>
+            <td><span class="chip raster"><span class="swatch"></span>Raster</span></td>
+            <td>Images larger than their on-screen size</td>
+            <td><code>cacheWidth</code> / <code>cacheHeight</code> / <code>ResizeImage</code></td>
+          </tr>
+          <tr>
+            <td>The whole screen freezes on every keystroke</td>
+            <td><span class="chip ui"><span class="swatch"></span>UI</span></td>
+            <td><code>setState()</code> is too high</td>
+            <td>Extract just the changing part into a small widget</td>
+          </tr>
+          <tr>
+            <td>Crashes after opening and closing a screen</td>
+            <td><span class="chip jank"><span class="swatch"></span>—</span></td>
+            <td>Missed <code>dispose()</code> / <code>cancel()</code></td>
+            <td>Find the growing class in Memory ▸ Diff</td>
+          </tr>
+          <tr>
+            <td>Only the first animation hitches</td>
+            <td><span class="chip jank"><span class="swatch"></span>—</span></td>
+            <td>(Impeller is default now — suspect something else first)</td>
+            <td>Look for first-run work and image decode</td>
+          </tr>
+          <tr>
+            <td>Spinner spins, content never shows</td>
+            <td><span class="chip ok"><span class="swatch"></span>Green</span></td>
+            <td>Link / API / serial requests</td>
+            <td>If Overlay is green it isn’t jank. Open Network</td>
+          </tr>
+          <tr>
+            <td>Freezes the moment the response arrives</td>
+            <td><span class="chip ui"><span class="swatch"></span>UI</span></td>
+            <td><code>jsonDecode</code> / a huge <code>setState</code></td>
+            <td>Not the request — the work after. <code>Isolate.run</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="Most web articles are outdated" data-accent="raster"
+  data-notes="Skip this in the main talk. This is the trap people hit when they go look things up. It’s why the next slide lists official docs only. If you see --purge-persistent-cache or SkSL, the article assumes the Skia era.">
+  <div class="eyebrow"><b>Extra</b><span>If you have time</span></div>
+  <h1>Most articles on the web<br>are already outdated</h1>
+  <div class="body">
+    <p class="lead">Performance write-ups are full of pieces from <em>before Impeller (the Skia era)</em>. Copy them as-is and you’ll apply fixes that no longer apply.</p>
+    <div class="cols">
+      <div class="stack">
+        <h2>Signs the article is old</h2>
+        <ul class="plain">
+          <li><code>--purge-persistent-cache</code></li>
+          <li>SkSL warm-up / shader compilation jank</li>
+          <li>“The first animation always janks”</li>
+          <li>Precompile your shaders</li>
+        </ul>
+        <div class="note bad">
+          <p class="sm">If you see these, the article’s premise is <strong>not today’s</strong>. Since Impeller became the default, shaders stopped being the usual first-frame culprit.</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>What to do now</h2>
+        <ul class="plain">
+          <li>Check the <strong>date</strong> first. Treat anything before 2023 as suspect</li>
+          <li>Read the official docs first</li>
+          <li>Jank only on first play → look at image decode and first-run work</li>
+        </ul>
+        <div class="note good">
+          <p class="sm">When in doubt, check the date on the official page. The links on the next slide are official-only.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="Further reading" data-accent="raster"
+  data-notes="Official docs only. For blogs, go back to the previous slide (most web articles are outdated).">
+  <div class="eyebrow"><b>Extra</b><span>If you have time</span></div>
+  <h1>When you look this up later</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="stack">
+        <h2>Official docs</h2>
+        <ul class="plain tight sm">
+          <li><strong>Diagnosing performance</strong><br><code>docs.flutter.dev/perf/ui-performance</code></li>
+          <li><strong>Performance view</strong><br><code>docs.flutter.dev/tools/devtools/performance</code></li>
+          <li><strong>CPU Profiler</strong><br><code>docs.flutter.dev/tools/devtools/cpu-profiler</code></li>
+          <li><strong>Memory view</strong><br><code>docs.flutter.dev/tools/devtools/memory</code></li>
+          <li><strong>Network view</strong><br><code>docs.flutter.dev/tools/devtools/network</code></li>
+          <li><strong>Performance best practices</strong><br><code>docs.flutter.dev/perf/best-practices</code></li>
+          <li><strong>Measuring app size</strong><br><code>docs.flutter.dev/perf/app-size</code></li>
+        </ul>
+      </div>
+      <div class="stack">
+        <h2>This session’s repo</h2>
+        <ul class="plain tight sm">
+          <li><code>slides/en.html</code> — this deck (English)</li>
+          <li><code>slides/index.html</code> — Japanese deck</li>
+          <li><code>sample_app/</code> — the demo app</li>
+          <li><code>sample_app/README.md</code> — demo steps and how to tune it for your device</li>
+        </ul>
+        <p class="sm dim">When you go looking for articles, check the “signs the article is old” slide first.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div><!-- /stage -->
+
+<nav class="hud" aria-label="Slide controls">
+  <div class="hud-section" id="hudSection"></div>
+  <div class="ticks" id="ticks" aria-label="Slide position"></div>
+  <div class="hud-right">
+    <span class="counter"><span id="cur">1</span> / <span id="total">–</span></span>
+    <button type="button" id="btnGrid" title="Slide index (g)">Index</button>
+    <button type="button" id="btnNotes" aria-pressed="false" title="Speaker notes (p)">Notes</button>
+    <button type="button" id="btnTheme" title="Toggle color theme">Theme</button>
+    <a class="hud-lang" id="btnLang" href="index.html" title="日本語版">JA</a>
+    <button type="button" id="btnHelp" title="Shortcuts (?)">?</button>
+  </div>
+</nav>
+</div><!-- /deck -->
+
+<aside class="notes" id="notes" aria-live="polite">
+  <h4>Speaker notes</h4>
+  <div id="notesBody"></div>
+</aside>
+
+<div class="sheet" id="navSheet" role="dialog" aria-modal="true" aria-label="Slide index">
+  <button type="button" class="sheet-close mini" data-close-sheet>Close (Esc)</button>
+  <h1 style="font-size:1.4rem;margin-bottom:1.2rem">Slide index</h1>
+  <div id="navBody"></div>
+</div>
+
+<div class="sheet" id="helpSheet" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+  <button type="button" class="sheet-close mini" data-close-sheet>Close (Esc)</button>
+  <h1 style="font-size:1.4rem;margin-bottom:1.2rem">Keyboard shortcuts</h1>
+  <div class="help-grid">
+    <div class="help-row"><span class="k">→ / Space / ↓</span><span>Next slide</span></div>
+    <div class="help-row"><span class="k">← / ↑</span><span>Previous slide</span></div>
+    <div class="help-row"><span class="k">Home / End</span><span>First / last</span></div>
+    <div class="help-row"><span class="k">g</span><span>Open slide index</span></div>
+    <div class="help-row"><span class="k">p</span><span>Toggle speaker notes</span></div>
+    <div class="help-row"><span class="k">f</span><span>Fullscreen</span></div>
+    <div class="help-row"><span class="k">t</span><span>Theme (light / dark)</span></div>
+    <div class="help-row"><span class="k">?</span><span>This list</span></div>
+    <div class="help-row"><span class="k">Esc</span><span>Close whatever is open</span></div>
+    <div class="help-row"><span class="k">1 … 9</span><span>Jump to that section</span></div>
+  </div>
+  <p style="margin-top:1.4rem;font-size:.85rem;color:var(--muted);max-width:56ch">
+    Print (⌘P / Ctrl+P) for a one-slide-per-page handout. Quiz answers are expanded in the printout.
+  </p>
+</div>
+
+<style>
+  .mini {
+    font-family: var(--font-mono); font-size: .7rem; letter-spacing: .06em;
+    color: var(--muted); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 4px;
+    padding: .4rem .7rem; cursor: pointer;
+  }
+  .mini:hover { color: var(--ui); border-color: var(--ui); }
+</style>
+
+<script>
+(function () {
+  'use strict';
+
+  var SECTIONS = {
+    cover: 'Cover',
+    s1:    '01 · What profiling is',
+    s2:    '02 · Why it matters',
+    s3:    '03 · How a frame is built',
+    s4:    '04 · How to work',
+    s5:    '05 · Using the tools',
+    s6:    '06 · Quiz',
+    s7:    '07 · Takeaways',
+    bonus: 'Extra · If you have time'
+  };
+  var SECTION_ORDER = ['cover', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 'bonus'];
+
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var stage = document.getElementById('stage');
+  var ticksEl = document.getElementById('ticks');
+  var hudSection = document.getElementById('hudSection');
+  var curEl = document.getElementById('cur');
+  var notes = document.getElementById('notes');
+  var notesBody = document.getElementById('notesBody');
+  var navSheet = document.getElementById('navSheet');
+  var helpSheet = document.getElementById('helpSheet');
+  var index = 0;
+  var ticks = [];
+
+  document.getElementById('total').textContent = String(slides.length);
+
+  /* ---------- ticks (bottom timeline) ---------- */
+  slides.forEach(function (slide, i) {
+    var sec = slide.dataset.sec;
+    var t = document.createElement('button');
+    t.type = 'button';
+    t.className = 'tick';
+    t.dataset.sec = sec === 'bonus' ? 'bonus' : sec;
+    if (i > 0 && slides[i - 1].dataset.sec !== sec) t.classList.add('boundary');
+    t.title = (SECTIONS[sec] || '') + ' — ' + (slide.dataset.title || '');
+    t.setAttribute('aria-label', 'Slide ' + (i + 1) + ': ' + (slide.dataset.title || ''));
+    t.addEventListener('click', function () { go(i); });
+    ticksEl.appendChild(t);
+    ticks.push(t);
+  });
+
+  /* ---------- navigator ---------- */
+  (function buildNav() {
+    var body = document.getElementById('navBody');
+    SECTION_ORDER.forEach(function (sec) {
+      var members = slides.filter(function (s) { return s.dataset.sec === sec; });
+      if (!members.length) return;
+      var group = document.createElement('section');
+      group.className = 'nav-group';
+      var title = document.createElement('div');
+      title.className = 'nav-group-title';
+      title.innerHTML = '<span>' + SECTIONS[sec] + '</span><span>' + members.length + ' slides</span>';
+      group.appendChild(title);
+      var grid = document.createElement('div');
+      grid.className = 'nav-grid';
+      members.forEach(function (slide) {
+        var i = slides.indexOf(slide);
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'nav-item';
+        b.dataset.sec = sec === 'bonus' ? 'bonus' : sec;
+        b.dataset.index = String(i);
+        b.innerHTML = '<span class="n">' + String(i + 1).padStart(2, '0') + '</span><span>' +
+          (slide.dataset.title || '') + '</span>';
+        b.addEventListener('click', function () { closeSheets(); go(i); });
+        grid.appendChild(b);
+      });
+      group.appendChild(grid);
+      body.appendChild(group);
+    });
+  })();
+  var navItems = Array.prototype.slice.call(document.querySelectorAll('.nav-item'));
+
+  /* ---------- navigation ---------- */
+  function go(i) {
+    index = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach(function (s, n) { s.classList.toggle('is-active', n === index); });
+    ticks.forEach(function (t, n) {
+      t.classList.toggle('now', n === index);
+      t.classList.toggle('seen', n < index);
+    });
+    navItems.forEach(function (b) { b.classList.toggle('now', +b.dataset.index === index); });
+    var slide = slides[index];
+    hudSection.innerHTML = '<b>' + (SECTIONS[slide.dataset.sec] || '') + '</b>';
+    curEl.textContent = String(index + 1);
+    notesBody.textContent = slide.dataset.notes || '(No notes on this slide)';
+    if (location.hash !== '#' + (index + 1)) {
+      history.replaceState(null, '', '#' + (index + 1));
+    }
+    charts.forEach(function (c) { c.setActive(slide.contains(c.canvas)); });
+  }
+  function next() { go(index + 1); }
+  function prev() { go(index - 1); }
+
+  function sectionStart(n) {
+    var sec = SECTION_ORDER[n];
+    for (var i = 0; i < slides.length; i++) {
+      if (slides[i].dataset.sec === sec) return i;
+    }
+    return -1;
+  }
+
+  /* ---------- overlays ---------- */
+  function sheetOpen(el) {
+    closeSheets();
+    el.classList.add('is-open');
+  }
+  function closeSheets() {
+    navSheet.classList.remove('is-open');
+    helpSheet.classList.remove('is-open');
+  }
+  function anySheetOpen() {
+    return navSheet.classList.contains('is-open') || helpSheet.classList.contains('is-open');
+  }
+  function toggleNotes() {
+    var open = notes.classList.toggle('is-open');
+    document.getElementById('btnNotes').setAttribute('aria-pressed', String(open));
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('[data-close-sheet]'), function (b) {
+    b.addEventListener('click', closeSheets);
+  });
+  document.getElementById('btnGrid').addEventListener('click', function () { sheetOpen(navSheet); });
+  document.getElementById('btnHelp').addEventListener('click', function () { sheetOpen(helpSheet); });
+  document.getElementById('btnNotes').addEventListener('click', toggleNotes);
+
+  /* ---------- theme ---------- */
+  function toggleTheme() {
+    var root = document.documentElement;
+    var explicit = root.getAttribute('data-theme');
+    var dark = explicit
+      ? explicit === 'dark'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    charts.forEach(function (c) { c.redraw(); });
+  }
+  document.getElementById('btnTheme').addEventListener('click', toggleTheme);
+  var btnLang = document.getElementById('btnLang');
+  if (btnLang) {
+    btnLang.addEventListener('click', function (e) {
+      e.preventDefault();
+      location.assign(btnLang.getAttribute('href') + location.hash);
+    });
+  }
+
+  /* ---------- keyboard ---------- */
+  document.addEventListener('keydown', function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    var k = e.key;
+    if (k === 'Escape') {
+      if (anySheetOpen()) { closeSheets(); e.preventDefault(); }
+      else if (notes.classList.contains('is-open')) { toggleNotes(); e.preventDefault(); }
+      return;
+    }
+    if (anySheetOpen() && k !== 'g' && k !== '?') return;
+    if (k === 'ArrowRight' || k === 'ArrowDown' || k === ' ' || k === 'PageDown') { next(); e.preventDefault(); }
+    else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp') { prev(); e.preventDefault(); }
+    else if (k === 'Home') { go(0); e.preventDefault(); }
+    else if (k === 'End') { go(slides.length - 1); e.preventDefault(); }
+    else if (k === 'g' || k === 'G') { anySheetOpen() ? closeSheets() : sheetOpen(navSheet); e.preventDefault(); }
+    else if (k === 'p' || k === 'P') { toggleNotes(); e.preventDefault(); }
+    else if (k === 't' || k === 'T') { toggleTheme(); e.preventDefault(); }
+    else if (k === '?') { anySheetOpen() ? closeSheets() : sheetOpen(helpSheet); e.preventDefault(); }
+    else if (k === 'f' || k === 'F') {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+      e.preventDefault();
+    } else if (k >= '1' && k <= '9') {
+      var at = sectionStart(+k - 1);
+      if (at >= 0) { go(at); e.preventDefault(); }
+    }
+  });
+
+  /* click on the stage advances, except on interactive elements */
+  stage.addEventListener('click', function (e) {
+    if (e.target.closest('button, a, pre, table, input, select, .chart, figure, svg, .opts, .answer')) return;
+    next();
+  });
+
+  window.addEventListener('hashchange', function () {
+    var n = parseInt(location.hash.slice(1), 10);
+    if (!isNaN(n) && n - 1 !== index) go(n - 1);
+  });
+
+  /* ---------- quiz ---------- */
+  Array.prototype.forEach.call(document.querySelectorAll('[data-quiz]'), function (group) {
+    var slide = group.closest('.slide');
+    var answer = slide ? slide.querySelector('.answer') : null;
+    var opts = Array.prototype.slice.call(group.querySelectorAll('.opt'));
+    opts.forEach(function (opt) {
+      opt.addEventListener('click', function () {
+        if (group.dataset.done === '1') return;
+        group.dataset.done = '1';
+        opts.forEach(function (o) {
+          if (o.dataset.correct === 'true') o.dataset.state = 'correct';
+          else if (o === opt) o.dataset.state = 'wrong';
+          else o.dataset.state = 'dim';
+        });
+        if (answer) answer.classList.add('is-open');
+      });
+    });
+  });
+
+  /* ---------- frame chart ---------- */
+  var BUDGET = 16.7;          /* 60fps frame budget (ms) */
+  var MAXMS = 33.4;           /* Y-axis max so the budget line sits at half height */
+  var FRAMES = 58;
+  var charts = [];
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var MONO = '"JetBrains Mono", ui-monospace, Menlo, monospace';
+
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
+  }
+
+  function makeChart(canvas) {
+    var ctx = canvas.getContext('2d');
+    var wrap = canvas.parentElement;
+    var slide = canvas.closest('.slide');
+    var readout = slide ? slide.querySelector('[data-readout]') : null;
+    var toggle = slide ? slide.querySelector('[data-load-toggle]') : null;
+    var spike = parseFloat(canvas.dataset.jank || '0.05');
+    var ui = [], raster = [];
+    var heavy = false, active = false;
+    var w = 0, h = 0, dpr = 1;
+
+    function rnd(a, b) { return a + Math.random() * (b - a); }
+
+    function push() {
+      var u, r;
+      if (heavy) {
+        u = Math.random() < 0.2 ? rnd(17, 27) : rnd(6, 12);
+        r = Math.random() < 0.6 ? rnd(19, 41) : rnd(9, 15.5);
+      } else {
+        u = Math.random() < spike * 0.6 ? rnd(17, 25) : rnd(3.2, 7.4);
+        r = Math.random() < spike ? rnd(18, 29) : rnd(4.2, 9.4);
+      }
+      ui.push(u); raster.push(r);
+      while (ui.length > FRAMES) { ui.shift(); raster.shift(); }
+    }
+
+    function refill() { ui = []; raster = []; for (var i = 0; i < FRAMES; i++) push(); }
+
+    function bar(x, y, bw, bh, r) {
+      r = Math.min(r, bw / 2, bh);
+      ctx.beginPath();
+      ctx.moveTo(x, y + bh);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.lineTo(x + bw - r, y);
+      ctx.quadraticCurveTo(x + bw, y, x + bw, y + r);
+      ctx.lineTo(x + bw, y + bh);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawRow(values, y, rowH, color, jank, label, showAxis, inkDim) {
+      var base = y + rowH;
+      var slot = w / FRAMES;
+      var bw = Math.max(1.5, slot - 2);
+      for (var i = 0; i < values.length; i++) {
+        var v = values[i];
+        var bh = Math.max(1, Math.min(v, MAXMS) / MAXMS * rowH);
+        ctx.fillStyle = v > BUDGET ? jank : color;
+        bar(i * slot, base - bh, bw, bh, 2.5);
+      }
+      var by = base - (BUDGET / MAXMS) * rowH;
+      ctx.save();
+      ctx.strokeStyle = inkDim;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(0, Math.round(by) + 0.5);
+      ctx.lineTo(w, Math.round(by) + 0.5);
+      ctx.stroke();
+      ctx.restore();
+      ctx.font = '700 10px ' + MONO;
+      ctx.fillStyle = color;
+      ctx.textAlign = 'left';
+      ctx.fillText(label, 2, y + 10);
+      if (showAxis) {
+        ctx.font = '400 9px ' + MONO;
+        ctx.fillStyle = inkDim;
+        ctx.textAlign = 'right';
+        ctx.fillText('16.7 ms', w - 2, by - 3);
+      }
+    }
+
+    function draw() {
+      if (!w || !h) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      var gap = 8, pad = 2;
+      var rowH = (h - pad * 2 - gap) / 2;
+      var cUi = cssVar('--ui'), cRaster = cssVar('--raster'), cJank = cssVar('--jank');
+      var dim = cssVar('--muted');
+      drawRow(raster, pad, rowH, cRaster, cJank, 'RASTER', true, dim);
+      drawRow(ui, pad + rowH + gap, rowH, cUi, cJank, 'UI', false, dim);
+      if (readout) {
+        var over = function (a) { return a.filter(function (v) { return v > BUDGET; }).length; };
+        var worst = Math.max(Math.max.apply(null, ui), Math.max.apply(null, raster));
+        var uo = over(ui), ro = over(raster);
+        readout.innerHTML =
+          'Last ' + FRAMES + ' frames · over budget UI ' + (uo ? '<b>' + uo + '</b>' : '0') +
+          ' / Raster ' + (ro ? '<b>' + ro + '</b>' : '0') +
+          ' · worst ' + (worst > BUDGET ? '<b>' + worst.toFixed(1) + ' ms</b>' : worst.toFixed(1) + ' ms');
+      }
+    }
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var nw = wrap.clientWidth, nh = wrap.clientHeight;
+      if (!nw || !nh) return;
+      w = nw; h = nh;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      draw();
+    }
+
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        heavy = !heavy;
+        toggle.setAttribute('aria-pressed', String(heavy));
+        toggle.textContent = heavy ? 'Stop extra work' : 'Add extra work';
+        if (reduceMotion) { refill(); }
+        draw();
+      });
+    }
+
+    if (window.ResizeObserver) {
+      new ResizeObserver(function () { if (active) resize(); }).observe(wrap);
+    } else {
+      window.addEventListener('resize', function () { if (active) resize(); });
+    }
+
+    refill();
+
+    return {
+      canvas: canvas,
+      setActive: function (v) { active = v; if (v) resize(); },
+      redraw: draw,
+      tick: function () { if (!active || reduceMotion) return; push(); draw(); }
+    };
+  }
+
+  charts = Array.prototype.map.call(document.querySelectorAll('canvas.framechart'), makeChart);
+
+  if (!reduceMotion) {
+    var last = 0;
+    (function loop(ts) {
+      if (ts - last > 85) { last = ts; charts.forEach(function (c) { c.tick(); }); }
+      requestAnimationFrame(loop);
+    })(0);
+  }
+
+  /* ---------- start ---------- */
+  var initial = parseInt(location.hash.slice(1), 10);
+  go(!isNaN(initial) && initial >= 1 ? initial - 1 : 0);
+  window.addEventListener('resize', function () {
+    charts.forEach(function (c) { c.setActive(slides[index].contains(c.canvas)); });
+  });
+})();
+</script>

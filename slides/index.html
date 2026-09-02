@@ -248,6 +248,8 @@ thead th {
 tbody tr:last-child td { border-bottom: none; }
 td.num, th.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .tbl-wrap { overflow-x: auto; }
+.footnote { margin: -0.9cqw 0 0; font-size: 1cqw; max-width: none; }
+.footnote sup, table sup { font-size: .68em; }
 
 code {
   font-family: var(--font-mono);
@@ -449,6 +451,13 @@ button.act[aria-pressed="true"] { background: var(--jank); border-color: var(--j
 }
 .hud button:hover { color: var(--ui); border-color: var(--ui); }
 .hud button[aria-pressed="true"] { color: var(--ui); border-color: var(--ui); background: var(--ui-wash); }
+.hud-lang {
+  font-family: var(--font-mono); font-size: .68rem; letter-spacing: .06em;
+  color: var(--muted); background: transparent; text-decoration: none;
+  border: 1px solid var(--line); border-radius: 4px;
+  padding: .3rem .5rem;
+}
+.hud-lang:hover { color: var(--ui); border-color: var(--ui); }
 
 /* ============================================================
    Overlays: notes / navigator / help
@@ -777,34 +786,6 @@ button.act[aria-pressed="true"] { background: var(--jank); border-color: var(--j
   </div>
 </section>
 
-<section class="slide" data-sec="s2" data-title="最適化には対価がある" data-accent="jank"
-  data-notes="ここは “やらない判断” の話。最適化は必ずコード・可読性・バグ確率のコストを払う。だから『効くと分かってから払う』。計測は速くするためだけでなく、無駄な最適化をやめるための道具でもある、と締める。">
-  <div class="eyebrow"><b>02</b><span>なぜやるのか</span></div>
-  <h1>最適化は、必ず何かを支払う</h1>
-  <div class="body">
-    <div class="cols3">
-      <div class="card">
-        <h3>支払うもの 01</h3>
-        <h2>読みにくさ</h2>
-        <p class="sm">キャッシュ、事前計算、手書きの <code>RenderObject</code>。速いコードはたいてい素直ではありません。</p>
-      </div>
-      <div class="card">
-        <h3>支払うもの 02</h3>
-        <h2>新しいバグ</h2>
-        <p class="sm">キャッシュを足せば、キャッシュが古くなるバグが生まれます。状態が増えるほど壊れます。</p>
-      </div>
-      <div class="card">
-        <h3>支払うもの 03</h3>
-        <h2>あなたの時間</h2>
-        <p class="sm">効かない最適化に使った時間は戻りません。しかも「やった感」だけは残ります。</p>
-      </div>
-    </div>
-    <div class="note">
-      <p><em>計測は「速くするため」だけの道具ではありません。</em>「ここは直さなくていい」と言い切るための道具でもあります。効くと分かってから支払いましょう。</p>
-    </div>
-  </div>
-</section>
-
 <!-- ═══════════════ 3. 1フレームの仕組み ═══════════════ -->
 <section class="slide" data-sec="s3" data-title="4 つのスレッド" data-accent="ui"
   data-notes="ここを飛ばすとツールが読めない。『Flutter は 1 枚の絵を 2 段階で作っている』が言えれば十分。Platform と I/O は名前だけ触れて先へ。矢印のラベル “Layer tree を渡す” を指差しながら説明する。">
@@ -928,43 +909,11 @@ button.act[aria-pressed="true"] { background: var(--jank); border-color: var(--j
           <li><code>BackdropFilter</code> のぼかし、影の重ねすぎ</li>
           <li>表示サイズよりずっと大きい画像をそのまま貼っている</li>
         </ul>
-        <p class="sm dim">→ 次に開くのは <strong>More debugging options</strong></p>
+        <p class="sm dim">→ 次に開くのは <strong>More debugging options</strong><br>（このスイッチだけは debug ビルドで）</p>
       </div>
     </div>
     <div class="note warm">
       <p>Raster 側の原因は、<em>Dart のコードをいくら読んでも見つかりません。</em>「ロジックは何もしていないのに重い」ときは、たいていこちらです。</p>
-    </div>
-  </div>
-</section>
-
-<section class="slide" data-sec="s3" data-title="2026年の前提：Impeller" data-accent="raster"
-  data-notes="ネットの記事の 8 割はここが古い。『初回だけカクつく』はシェーダーコンパイルの話で、Impeller が既定になった今は基本起きない。逆に言えば、今カクついているなら原因は自分のコードにある。ここは “調べ物のときの地雷回避” として役に立つ。">
-  <div class="eyebrow"><b>03</b><span>1フレームの仕組み</span></div>
-  <h1>ネットの記事は、<br>だいたい 1 世代古い</h1>
-  <div class="body">
-    <div class="cols">
-      <div class="card" style="border-top:0.28cqw solid var(--jank)">
-        <h3>もう追わなくていい話</h3>
-        <ul class="tight sm plain">
-          <li>「アニメーションの<strong>初回だけ</strong>カクつく」＝シェーダーコンパイルのジャンク</li>
-          <li><code>--purge-persistent-cache</code></li>
-          <li>SkSL の warm-up、<code>--bundle-sksl-path</code></li>
-        </ul>
-        <p class="sm">これは Skia 時代の話です。<strong>Flutter 3.44 では iOS / Android とも Impeller が既定</strong>（Android は Vulkan）で、シェーダーは事前に用意されています。</p>
-      </div>
-      <div class="card" style="border-top:0.28cqw solid var(--ok)">
-        <h3>今も変わらず効く話</h3>
-        <ul class="tight sm plain">
-          <li>profile モードで、実機で測る</li>
-          <li>UI と Raster を分けて見る</li>
-          <li><code>saveLayer</code> / <code>Opacity</code> / <code>Clip</code> / blur を減らす</li>
-          <li>重い同期処理を UI スレッドから追い出す</li>
-        </ul>
-        <p class="sm">この資料の内容は、レンダラが変わっても<strong>そのまま使えます</strong>。</p>
-      </div>
-    </div>
-    <div class="note">
-      <p><em>裏を返すと、今あなたのアプリがカクついているなら、原因はほぼ自分のコードの中にあります。</em>探す価値があるということです。</p>
     </div>
   </div>
 </section>
@@ -1012,7 +961,7 @@ button.act[aria-pressed="true"] { background: var(--jank); border-color: var(--j
           <tr><th style="width:22%"></th><th style="width:26%">debug</th><th style="width:26%">profile</th><th style="width:26%">release</th></tr>
         </thead>
         <tbody>
-          <tr><td><strong>コンパイル</strong></td><td>JIT</td><td>AOT（本番と同じ）</td><td>AOT</td></tr>
+          <tr><td><strong>コンパイル</strong></td><td>JIT<sup>＊1</sup></td><td>AOT<sup>＊2</sup>（本番と同じ）</td><td>AOT<sup>＊2</sup></td></tr>
           <tr><td><strong>assert・デバッグ用チェック</strong></td><td>あり</td><td>なし</td><td>なし</td></tr>
           <tr><td><strong>hot reload</strong></td><td>できる</td><td>できない</td><td>できない</td></tr>
           <tr><td><strong>DevTools 接続</strong></td><td>できる</td><td><strong>できる</strong></td><td>できない</td></tr>
@@ -1021,6 +970,7 @@ button.act[aria-pressed="true"] { background: var(--jank); border-color: var(--j
         </tbody>
       </table>
     </div>
+    <p class="sm dim footnote">＊1 <strong>JIT</strong> = Just-In-Time（実行しながらコンパイル）　＊2 <strong>AOT</strong> = Ahead-Of-Time（事前にコンパイル済み）</p>
     <div class="cols">
       <div class="note good">
         <p class="sm"><strong>profile ＝ 速さは本番相当のまま、計測だけできる</strong>ように作られたモード。だから計測は必ずこれで行います。</p>
@@ -1112,7 +1062,7 @@ button.act[aria-pressed="true"] { background: var(--jank); border-color: var(--j
 </section>
 
 <section class="slide" data-sec="s4" data-title="終わりを先に決める" data-accent="ok"
-  data-notes="profiling で一番よくある失敗は “終われないこと”。目標を数字で決めてから始める。目標に届いたら、まだ改善余地があってもやめる。ここで前の『最適化には対価がある』を回収する。">
+  data-notes="profiling で一番よくある失敗は “終われないこと”。目標を数字で決めてから始める。目標に届いたら、まだ改善余地があってもやめる。最適化は必ずコード・時間のコストを払う、だから目標に届いたら止める、と一言添える。">
   <div class="eyebrow"><b>04</b><span>進め方</span></div>
   <h1>始める前に、<br>終わる条件を決めておく</h1>
   <div class="body">
@@ -1148,7 +1098,7 @@ button.act[aria-pressed="true"] { background: var(--jank); border-color: var(--j
             <li>直すコストが小さいものから</li>
           </ul>
         </div>
-        <p class="sm dim">目標に届いたら、まだ改善余地があってもそこで止める。それが「最適化には対価がある」の実践です。</p>
+        <p class="sm dim">目標に届いたら、まだ改善余地があってもそこで止める。最適化は必ずコードの読みにくさと自分の時間を支払うからです。</p>
       </div>
     </div>
   </div>
@@ -1401,7 +1351,7 @@ is available at:
           <li><strong>1 · Flutter Frames チャート</strong><br>操作した分だけ、フレームが 1 本ずつ積まれていきます。</li>
           <li><strong>2 · 赤いバー</strong><br>予算を超えたフレーム。<em>クリックすると下に詳細が出ます。</em>ここが起点です。</li>
           <li><strong>3 · Frame Analysis / Timeline Events</strong><br>選んだフレームの中身。まずは Frame Analysis から。</li>
-          <li><strong>4 · Enhance Tracing / More debugging options</strong><br>もっと細かく調べたいときのスイッチ。必要になってから触ります。</li>
+          <li><strong>4 · Enhance Tracing / More debugging options</strong><br>もっと細かく調べたいときのスイッチ。必要になってから触ります。<span class="dim">後者は debug ビルドでのみ有効です。</span></li>
         </ul>
         <div class="note">
           <p class="sm">はじめは「赤いバーを 1 本クリックする」だけで十分です。それ以外のボタンは、必要になってから覚えれば間に合います。</p>
@@ -1547,7 +1497,7 @@ is available at:
 </section>
 
 <section class="slide" data-sec="s5" data-title="More debugging options" data-accent="raster"
-  data-notes="Raster が赤いときの決定打。原理は単純で、疑わしい描画機能を丸ごと無効化して、直るかどうかを見る。直れば犯人確定。これは “消して確かめる” 二分探索で、コードを 1 行も触らずに切り分けられるのが強い。">
+  data-notes="Raster が赤いときの決定打。疑わしい描画機能を丸ごと無効化して、直るかどうかを見る。直れば犯人確定。ここで必ず言うこと：このスイッチは debug ビルドでしか効かない（サービス拡張が assert の中で登録されるため、profile では灰色）。切り分けだけ debug でやり、時間の数字は profile で測り直す、という往復になる。Raster が何を描くかは debug でも同じなので、犯人探しには問題なく使える。">
   <div class="eyebrow"><b>05</b><span>ツールの使い方</span></div>
   <h1>消してみて、直るかを見る</h1>
   <div class="body">
@@ -1564,19 +1514,21 @@ is available at:
             </tbody>
           </table>
         </div>
-        <div class="note warm">
-          <p class="sm">OFF にすると<strong>見た目は崩れます</strong>。それでいいのです。ここで見ているのは見た目ではなく、Raster の時間だけです。</p>
+        <div class="note bad">
+          <p><strong>このスイッチは debug ビルド専用です</strong></p>
+          <p class="sm">profile モードでは灰色のまま押せません。<em>切り分けは debug で、時間の数字は profile で測り直す。</em>Raster が何を描くかは debug でも同じなので、犯人探しにはそのまま使えます。</p>
         </div>
       </div>
       <div class="stack">
         <h2>やっていることは二分探索</h2>
         <ol class="tight sm">
-          <li>Raster が赤い、と分かっている</li>
+          <li>profile で測って、<strong>Raster が赤い</strong>と分かっている</li>
+          <li><code>--debug</code> で起動し直す</li>
           <li>Clip を消す → 直らない → Clip は無罪</li>
           <li>Opacity を消す → <strong>直った</strong> → 犯人はここ</li>
-          <li>コードを読んで <code>Opacity</code> を探す</li>
-          <li>1 か所だけ直して、もう一度測る</li>
+          <li>コードを 1 か所だけ直し、<strong>profile に戻して</strong>測り直す</li>
         </ol>
+        <p class="sm dim">OFF にすると見た目は崩れます。それでいいのです。ここで見ているのは見た目ではなく、Raster の時間だけです。</p>
         <div class="note">
           <p class="sm"><strong>どのスイッチでも直らないときは</strong><br>画像を疑います。表示サイズよりずっと大きい画像を貼っていないか、<code>cacheWidth</code> / <code>cacheHeight</code> を指定しているか。<span class="dim">（+α で扱います）</span></p>
         </div>
@@ -1640,7 +1592,7 @@ is available at:
 </section>
 
 <section class="slide" data-sec="s5" data-title="デモ：sample_app" data-accent="ok"
-  data-notes="ここから実演。sample_app を profile モードで起動しておく。画面右上のスイッチひとつで問題版と改善版が切り替わるので、DevTools を開いたまま A/B できる。まず OFF でスクロールして赤を出し、Frame Analysis を読み、More debugging options で切り分け、最後にスイッチ ON で赤が消えるのを見せる。時間があれば②の画面も。">
+  data-notes="ここから実演。sample_app を profile モードで起動しておく。画面右上のスイッチひとつで問題版と改善版が切り替わるので、DevTools を開いたまま A/B できる。まず OFF でスクロールして赤を出し、Frame Analysis を読む。More debugging options は debug 専用なので、切り分けを見せるならここで --debug に切り替える（時間がなければ口頭で触れるだけでよい）。最後に profile に戻し、スイッチ ON で赤が消えるのを見せる。時間があれば②の画面も。">
   <div class="eyebrow"><b>05</b><span>ツールの使い方</span></div>
   <h1>やってみる</h1>
   <div class="body">
@@ -1648,13 +1600,14 @@ is available at:
       <div class="stack">
 <pre><code>cd sample_app
 flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
-        <p class="sm">どちらのデモ画面も、<strong>右上のスイッチひとつ</strong>で「問題のある版」と「改善版」が切り替わります。画面遷移しないので、DevTools を開いたまま前後比較できます。</p>
+        <p class="sm">どのデモ画面も、<strong>右上のスイッチひとつ</strong>で「問題のある版」と「改善版」が切り替わります。DevTools を開いたまま前後比較できます。</p>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th style="width:30%">デモ</th><th>赤くなる場所</th></tr></thead>
+            <thead><tr><th style="width:30%">デモ</th><th>どこに出るか</th></tr></thead>
             <tbody>
               <tr><td><strong>① スクロールのジャンク</strong></td><td><span class="chip raster"><span class="swatch"></span>Raster</span> — <code>Opacity</code> / <code>saveLayer</code> / blur / 影</td></tr>
               <tr><td><strong>② 操作が固まる</strong></td><td><span class="chip ui"><span class="swatch"></span>UI</span> — 重い同期処理でフレームが 1 枚も描けない</td></tr>
+              <tr><td><strong>③ 閉じたのに減らない</strong></td><td><span class="chip jank"><span class="swatch"></span>Memory</span> — <code>cancel()</code> し忘れ。<strong>Memory ▸ Diff</strong> で見る<span class="dim">（+α）</span></td></tr>
             </tbody>
           </table>
         </div>
@@ -1665,7 +1618,7 @@ flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
           <li>スイッチ <strong>OFF</strong> のまま、一覧を勢いよくスクロールする</li>
           <li>DevTools ▸ Performance に<strong>赤いバー</strong>が出る</li>
           <li>赤いバーを 1 本クリック → <strong>Frame Analysis</strong> を読む</li>
-          <li><strong>More debugging options</strong> で Opacity / Clip を OFF にして、犯人を絞る</li>
+          <li><code>--debug</code> で起動し直し、<strong>More debugging options</strong> で Opacity / Clip を OFF にして犯人を絞る<br><span class="dim">このスイッチは debug 専用。絞れたら profile に戻します</span></li>
           <li>アプリのスイッチを <strong>ON</strong> にして、同じ操作をもう一度</li>
           <li>赤が消えたことを確認する</li>
         </ol>
@@ -1870,7 +1823,7 @@ flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
     <div class="note good">
       <p><em>今日の到達点は「直せる」ではなく「見つけられる」です。</em>見つけられれば、直し方は調べられます。見つけられないうちは、何を調べればいいかも分かりません。</p>
     </div>
-    <p class="sm dim">この先は <span class="kbd">→</span> で「+α」へ。Memory / App Size / 自分で計測点を打つ / よくある症状と打ち手の早見表があります。</p>
+    <p class="sm dim">この先は <span class="kbd">→</span> で「+α」へ。Memory / 通信との切り分け / App Size / よくある症状と打ち手の早見表があります。</p>
   </div>
 </section>
 
@@ -1880,7 +1833,14 @@ flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
   <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
   <h1>ここからは、おまけ</h1>
   <div class="body">
-    <div class="cols">
+    <div class="cols3">
+      <div class="stack">
+        <h2>仕組みをもう少し</h2>
+        <ul class="plain tight sm">
+          <li><strong>build → layout → paint</strong> — UI スレッドの中身</li>
+          <li><strong>Timeline の左に並ぶ名前</strong> — <code>1.ui</code> / <code>DartWorker</code> / <code>PipelineItem</code></li>
+        </ul>
+      </div>
       <div class="stack">
         <h2>もっと測る</h2>
         <ul class="plain tight sm">
@@ -1888,6 +1848,7 @@ flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
           <li><strong>App Size</strong> — アプリが何で太っているか</li>
           <li><strong>自分で計測点を打つ</strong> — <code>Timeline.startSync</code></li>
           <li><strong>本番で測り続ける</strong> — <code>addTimingsCallback</code></li>
+          <li><strong>通信が遅いか切り分ける</strong> — Overlay / Network / モック</li>
         </ul>
       </div>
       <div class="stack">
@@ -1897,6 +1858,7 @@ flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
           <li><strong>再描画を切り離す</strong> — <code>RepaintBoundary</code></li>
           <li><strong>画像を小さくして読む</strong> — <code>cacheWidth</code></li>
           <li><strong>症状から引く早見表</strong></li>
+          <li><strong>ネットの記事はだいたい古い</strong> — Impeller 以前</li>
         </ul>
       </div>
     </div>
@@ -1906,8 +1868,118 @@ flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
   </div>
 </section>
 
+<section class="slide" data-sec="bonus" data-title="build → layout → paint" data-accent="raster"
+  data-notes="Timeline Events で Frame の下に並ぶ帯の正体。順番は Animate → Build → Layout → Paint で固定。いちばん誤解されるのが paint で、ここではピクセルを塗らず「どう描くか」を記録するだけ。だから Opacity や blur の重さは paint の帯ではなく Raster 側に出る、を必ず言う。">
+  <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
+  <h1>UI スレッドの中では、<br>4 つの仕事が順に走る</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <figure>
+        <svg class="diagram" viewBox="0 0 520 400" role="img" aria-label="UI スレッドの 1 フレームの流れ図。Vsync の合図で始まり、Animate、Build、Layout、Paint の順に処理が進む。できあがった Layer tree が Raster スレッドへ渡され、画面に表示される。">
+          <defs>
+            <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+
+          <g stroke="var(--ui)" stroke-width="1.5" fill="none" opacity=".55">
+            <path d="M32 52 L22 52 L22 272 L32 272"/>
+          </g>
+          <text x="10" y="162" text-anchor="middle" transform="rotate(-90 10 162)" font-size="11" fill="var(--ui)" font-weight="700">UI thread（Dart）</text>
+
+          <g stroke="currentColor" fill="none" stroke-width="1.4" opacity=".45" stroke-dasharray="4 4">
+            <rect x="44" y="4" width="466" height="32" rx="7"/>
+          </g>
+          <text x="277" y="25" text-anchor="middle" font-size="12" opacity=".6">Vsync — 画面から「次の 1 枚を」の合図</text>
+          <g stroke="currentColor" opacity=".5"><line x1="277" y1="36" x2="277" y2="50" marker-end="url(#ar3)" stroke-width="1.4"/></g>
+
+          <g stroke="var(--ui)" fill="var(--ui-wash)" stroke-width="1.8">
+            <rect x="44" y="52" width="466" height="46" rx="8"/>
+            <rect x="44" y="110" width="466" height="46" rx="8"/>
+            <rect x="44" y="168" width="466" height="46" rx="8"/>
+            <rect x="44" y="226" width="466" height="46" rx="8"/>
+          </g>
+          <g text-anchor="middle">
+            <text x="277" y="73"  font-size="14" fill="var(--ui)" font-weight="700">Animate</text>
+            <text x="277" y="90"  font-size="11" opacity=".75">アニメーションの値を 1 コマ進める</text>
+            <text x="277" y="131" font-size="14" fill="var(--ui)" font-weight="700">Build</text>
+            <text x="277" y="148" font-size="11" opacity=".75">dirty になった Widget だけを作り直す</text>
+            <text x="277" y="189" font-size="14" fill="var(--ui)" font-weight="700">Layout</text>
+            <text x="277" y="206" font-size="11" opacity=".75">制約が下りて、サイズが返る</text>
+            <text x="277" y="247" font-size="14" fill="var(--ui)" font-weight="700">Paint</text>
+            <text x="277" y="264" font-size="11" opacity=".75">「どう描くか」を Layer tree に記録する</text>
+          </g>
+          <g stroke="var(--ui)" opacity=".8" stroke-width="1.6">
+            <line x1="277" y1="98"  x2="277" y2="108" marker-end="url(#ar3)"/>
+            <line x1="277" y1="156" x2="277" y2="166" marker-end="url(#ar3)"/>
+            <line x1="277" y1="214" x2="277" y2="224" marker-end="url(#ar3)"/>
+          </g>
+
+          <g stroke="var(--raster)" stroke-width="2"><line x1="277" y1="272" x2="277" y2="298" marker-end="url(#ar3)"/></g>
+          <text x="289" y="290" font-size="11" fill="var(--raster)" font-weight="700">Layer tree</text>
+
+          <g stroke="var(--raster)" fill="var(--raster-wash)" stroke-width="2">
+            <rect x="44" y="300" width="466" height="46" rx="8"/>
+          </g>
+          <text x="277" y="321" text-anchor="middle" font-size="14" fill="var(--raster)" font-weight="700">Raster thread</text>
+          <text x="277" y="338" text-anchor="middle" font-size="11" opacity=".75">記録どおりに GPU で塗る</text>
+
+          <g stroke="var(--raster)" stroke-width="2"><line x1="277" y1="346" x2="277" y2="356" marker-end="url(#ar3)"/></g>
+          <g stroke="currentColor" fill="none" stroke-width="1.5"><rect x="192" y="358" width="170" height="34" rx="7"/></g>
+          <text x="277" y="380" text-anchor="middle" font-size="13" font-weight="700">画面</text>
+        </svg>
+      </figure>
+      <div class="stack">
+        <div class="note">
+          <p class="sm"><strong>Build</strong> — <code>setState()</code> で dirty になった Element だけを作り直します。画面全部ではありません。<em>重いときは <code>build()</code> の中で計算しているか、<code>setState()</code> を呼ぶ位置が高すぎます。</em></p>
+        </div>
+        <div class="note">
+          <p class="sm"><strong>Layout</strong> — 親から子へ<strong>制約</strong>が下り、子から親へ<strong>サイズ</strong>が返ります。ふつうは 1 往復で決まるので速い。<code>intrinsics</code>（高さを測るためだけの追加計算）が走ると遅くなります。</p>
+        </div>
+        <div class="note warm">
+          <p class="sm"><strong>Paint</strong> — ここでは<em>ピクセルは 1 つも塗られません。</em>「どう描くか」を記録するだけです。実際に塗るのは Raster スレッドなので、<code>Opacity</code> や blur の重さは<strong>この帯ではなく Raster 側に出ます</strong>。</p>
+        </div>
+        <p class="sm dim">Timeline Events では、<code>Frame</code> の帯の下にこの順で並びます。どれが太いかで、UI スレッドのどこが重いのかが決まります。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="Timeline の左に並ぶ名前" data-accent="raster"
+  data-notes="Timeline Events を開くと左に名前がずらっと並んで面食らう。実際に見るのは 1.ui と 1.raster の 2 本だけ。残りは “なぜ待たされているか” を追うときの補助線。DartWorker が太くて 1.ui が細ければ、Isolate への追い出しが効いている証拠として読める。">
+  <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
+  <h1>Timeline の左に並ぶ名前</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="card" style="border-top:0.28cqw solid var(--ui)">
+        <h3>スレッドのトラック</h3>
+        <ul class="tight sm plain">
+          <li><code>1.ui</code> — <strong>UI スレッド</strong>。Dart のコードが動く場所。<code>VsyncProcessCallback</code> / <code>Animator::BeginFrame</code> / <code>BUILD</code> の帯が並びます。<strong>まずここ</strong></li>
+          <li><code>1.raster</code> — <strong>Raster スレッド</strong>。Layer tree を GPU コマンドに変えるところ。<strong>次にここ</strong></li>
+          <li><code>1.io</code> — 画像のデコードなど。出ないこともあります</li>
+          <li><code>DartWorker</code> — Dart のワーカースレッド。<code>Isolate.run()</code> / <code>compute()</code> に逃がした処理はここに出ます</li>
+        </ul>
+        <p class="sm dim">名前のうしろの数字はスレッド ID です。実行のたびに変わるだけで、意味はありません。</p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--raster)">
+        <h3>イベントのトラック</h3>
+        <ul class="tight sm plain">
+          <li><code>Frame</code> — 1 枚のフレームの区間。<strong>横幅がそのままフレーム時間</strong></li>
+          <li><code>Frame Request Pending</code> — 「描いてほしい」と要求してから、実際に始まるまでの待ち</li>
+          <li><code>PipelineItem</code> / <code>PipelineProduce</code> — UI が作った Layer tree を Raster へ受け渡す区間。上が UI 側で作ったもの、下が Raster 側で受け取ったもの</li>
+          <li><code>PlatformChannel ScheduleResult</code> — <code>MethodChannel</code> でネイティブを呼んだ結果が返ってきた印</li>
+          <li><code>Process 9116</code> — プロセス全体の見出し。折りたたみ用で、中身はありません</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note">
+      <p class="sm">見るのは <code>1.ui</code> と <code>1.raster</code> の 2 本だけで足ります。<em><code>DartWorker</code> が太くて <code>1.ui</code> が細ければ、重い処理の追い出しは成功しています。</em></p>
+    </div>
+  </div>
+</section>
+
 <section class="slide" data-sec="bonus" data-title="Memory — 減らないものを見つける" data-accent="raster"
-  data-notes="時間ではなくメモリの話。DevTools の Memory ▸ Diff が実務では一番使える。開く前・開いて閉じたあとの 2 枚を撮って差分を見る。増えたままのクラスが出たら、そのクラスの参照を誰かが持ち続けている。">
+  data-notes="時間ではなくメモリの話。DevTools の Memory ▸ Diff が実務では一番使える。開く前・開いて閉じたあとの 2 枚を撮って差分を見る。増えたままのクラスが出たら、そのクラスの参照を誰かが持ち続けている。sample_app のデモ③をその場で回すと速い。スナップショットを撮ると GC も走るので、撮ってから比べること。">
   <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
   <h1>Memory — 「閉じたのに減らない」を見つける</h1>
   <div class="body">
@@ -1934,8 +2006,9 @@ flutter run <span class="s">--profile</span> -d &lt;device-id&gt;</code></pre>
           <li>コールバックの中で <code>context</code> や State を掴んでいる</li>
         </ul>
         <div class="note good">
-          <p class="sm">Flutter には <strong>leak_tracker</strong> という仕組みもあり、テストの中で <code>dispose</code> 漏れを自動検出できます。まずは Diff で「増えているか」を確認するのが手軽です。</p>
+          <p class="sm"><strong><code>sample_app</code> のデモ ③ で試せます</strong><br>詳細画面を開くたびに 2MB を確保し、グローバルな <code>StreamController</code> を購読したまま <code>cancel()</code> し忘れます。「開いて閉じるを 10 回」を押して Diff を見ると、<code>DetailPayload</code> が 10 個（約 20MB）増えたまま戻りません。</p>
         </div>
+        <p class="sm dim">テストの中で <code>dispose</code> 漏れを自動検出する <strong>leak_tracker</strong> という仕組みもあります。まずは Diff で「増えているか」を見るのが手軽です。</p>
       </div>
     </div>
   </div>
@@ -2037,6 +2110,81 @@ SchedulerBinding.instance.addTimingsCallback((timings) {
         <div class="note">
           <p class="sm">まずは「超過フレームの割合」だけを画面ごとに集めるところから始めると、改善の効果が数字で見えるようになります。</p>
         </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="待ちとカクつきは別" data-accent="raster"
+  data-notes="ユーザーの『遅い』は待ちとカクつきをごっちゃにする。ここを切り分けないと、ジャンクの道具で API を追いかけたり、逆に通信改善チケットを出して Overlay が真っ赤、という空振りが起きる。必ず言うこと：Dart の HTTP は await しても UI スレッドを止めない。待っているあいだにカクつくなら、通信そのものではない。通信の直後だけ固まるなら jsonDecode か巨大な setState。">
+  <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
+  <h1>「遅い」は 2 種類ある。<br>待ちと、カクつきは別の病気</h1>
+  <div class="body">
+    <div class="cols">
+      <div class="card" style="border-top:0.28cqw solid var(--ok)">
+        <h3>待ち — 通信・サーバー</h3>
+        <h2>画面は動く。中身が出ない</h2>
+        <ul class="tight sm plain">
+          <li>クルクルは回る。スクロールもできる</li>
+          <li>Performance Overlay は<strong>緑のまま</strong></li>
+          <li>犯人は回線、サーバー、直列の API、大きすぎるレスポンス</li>
+        </ul>
+        <p class="sm dim">→ 次に開くのは <strong>Network</strong></p>
+      </div>
+      <div class="card" style="border-top:0.28cqw solid var(--jank)">
+        <h3>カクつき — フレーム</h3>
+        <h2>指が置いていかれる</h2>
+        <ul class="tight sm plain">
+          <li>アニメが飛ぶ。リストが引っかかる</li>
+          <li>Overlay のバーが<strong>赤い</strong></li>
+          <li>犯人は UI / Raster（本編で見たもの）</li>
+        </ul>
+        <p class="sm dim">→ Network は閉じて、Performance に戻る</p>
+      </div>
+    </div>
+    <div class="cols">
+      <div class="note warm">
+        <p class="sm"><code>await http.get(...)</code> は、待っているあいだ <em>UI スレッドを止めません。</em>クルクルが回っているのにカクつくなら、通信ではなくそのあいだに走っている描画や計算です。</p>
+      </div>
+      <div class="note bad">
+        <p class="sm"><strong>よくある取り違え。</strong>通信が返った直後に <code>jsonDecode</code> や巨大な <code>setState</code> を同期でやると、「API が遅い」に見えます。固まるのは通信中ではなく、<em>返ってきたあと</em>です。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-sec="bonus" data-title="通信かどうかを切り分ける" data-accent="raster"
+  data-notes="実験で確定する、がポイント。数字を眺めるより、通信を消す・遅くするの 2 実験の方が速い。モックして 0ms にしても赤ければ通信ではない。回線を遅くしても Overlay が緑なら通信。通信完了の直後だけ赤いなら jsonDecode か巨大な setState。sample_app に通信デモは無いので、口頭と自分のアプリの Network タブで十分。画像が遅いときは Network より 1.io（デコード）と Raster を疑う、と cacheWidth のスライドへつなぐ。">
+  <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
+  <h1>通信が遅いかは、消してみれば分かる</h1>
+  <div class="body">
+    <div class="cols-wide">
+      <div class="stack">
+        <h2>切り分けは 3 手</h2>
+        <ol class="tight sm">
+          <li><strong>Overlay を出したまま再現する</strong><br>緑のまま待つ → ジャンクの道具は閉じてよい</li>
+          <li><strong>DevTools ▸ Network を見る</strong><br>Waiting が長い → サーバーか回線。通信完了の直後に UI が赤い → パースか rebuild</li>
+          <li><strong>通信を消して、遅くして、もう一度測る</strong></li>
+        </ol>
+        <div class="note good">
+          <p class="sm"><strong>3 手目の実験</strong><br>レスポンスをモック（0ms）にしてもカクつく → <em>通信は無関係</em>。<br>Charles や Network Link Conditioner で遅くしても Overlay が緑 → <em>通信</em>。</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>観察 → 結論</h2>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th style="width:52%">観察</th><th>結論</th></tr></thead>
+            <tbody>
+              <tr><td>Overlay 緑、Network の Waiting が長い</td><td>回線 or サーバー</td></tr>
+              <tr><td>Overlay 緑、リクエストが直列に何本も</td><td>ウォーターフォール</td></tr>
+              <tr><td>通信完了の直後だけ UI が赤い</td><td><code>jsonDecode</code> / 巨大な rebuild</td></tr>
+              <tr><td>モック（0ms）でも赤い</td><td>通信は無関係</td></tr>
+              <tr><td>画像だけ遅い。<code>1.io</code> が太い</td><td>デコード（<code>cacheWidth</code>）</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="sm dim">Timeline では、UI が細く空いている区間が長い＝待っている。その直後に <code>BUILD</code> が太い＝返ってきたあとの処理です。</p>
       </div>
     </div>
   </div>
@@ -2170,7 +2318,7 @@ Image.network(
             <td>スクロールがずっとカクつく</td>
             <td><span class="chip raster"><span class="swatch"></span>Raster</span></td>
             <td>行ごとの <code>Opacity</code> / 切り抜き / 影 / blur</td>
-            <td>More debugging options で切り分け → 角丸は <code>borderRadius</code>、半透明は色の alpha</td>
+            <td>debug で More debugging options を使って切り分け → 角丸は <code>borderRadius</code>、半透明は色の alpha</td>
           </tr>
           <tr>
             <td>スクロールがずっとカクつく</td>
@@ -2208,14 +2356,60 @@ Image.network(
             <td>（Impeller 既定の今は、まず別の原因を疑う）</td>
             <td>初回に走る重い処理・画像のデコードを探す</td>
           </tr>
+          <tr>
+            <td>クルクルは回るが中身が出ない</td>
+            <td><span class="chip ok"><span class="swatch"></span>緑</span></td>
+            <td>回線・API・直列リクエスト</td>
+            <td>Overlay が緑ならジャンクではない。Network を見る</td>
+          </tr>
+          <tr>
+            <td>通信が返った瞬間に固まる</td>
+            <td><span class="chip ui"><span class="swatch"></span>UI</span></td>
+            <td><code>jsonDecode</code> / 巨大な <code>setState</code></td>
+            <td>通信ではなく直後の処理。<code>Isolate.run</code> へ</td>
+          </tr>
         </tbody>
       </table>
     </div>
   </div>
 </section>
 
+<section class="slide" data-sec="bonus" data-title="ネットの記事はだいたい古い" data-accent="raster"
+  data-notes="本編では飛ばす。調べ物をするときに一番ハマりやすい話。公式ドキュメントだけを挙げてある理由を、ここで説明する。--purge-persistent-cache と SkSL が出てきたら前提が Skia 時代、と覚えればよい。">
+  <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
+  <h1>ネットの記事は、だいたい古い</h1>
+  <div class="body">
+    <p class="lead">パフォーマンス関連の記事は、<em>Impeller 以前（Skia 時代）</em>に書かれたものが大量に残っています。そのまま真似すると、今は必要ない対策をすることになります。</p>
+    <div class="cols">
+      <div class="stack">
+        <h2>古い記事のサイン</h2>
+        <ul class="plain">
+          <li><code>--purge-persistent-cache</code></li>
+          <li>SkSL の warm-up / shader compilation jank</li>
+          <li>「初回のアニメーションは必ずカクつく」</li>
+          <li>shader を事前コンパイルせよ、という話</li>
+        </ul>
+        <div class="note bad">
+          <p class="sm">これが出てきたら、その記事の前提は<strong>今と違います</strong>。Impeller が既定になってから、初回カクつきの主犯は shader ではなくなりました。</p>
+        </div>
+      </div>
+      <div class="stack">
+        <h2>今どうするか</h2>
+        <ul class="plain">
+          <li>まず<strong>日付</strong>を見る。2023 年以前は疑う</li>
+          <li>公式ドキュメントを先に読む</li>
+          <li>初回だけカクつく → 画像のデコードや、初回に走る重い処理を疑う</li>
+        </ul>
+        <div class="note good">
+          <p class="sm">迷ったら公式の日付を確認してください。次のページのリンクは、公式だけにしています。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="slide" data-sec="bonus" data-title="参考リンク" data-accent="raster"
-  data-notes="公式ドキュメントだけを挙げてある。ブログ記事は Impeller 以前のものが多く、そのまま真似すると古い対策をすることになる、と最後に一言添える。">
+  data-notes="公式ドキュメントだけを挙げてある。ブログを読むときは前のスライド（ネットの記事はだいたい古い）へ。">
   <div class="eyebrow"><b>+α</b><span>時間が余ったら</span></div>
   <h1>この先を調べるときは</h1>
   <div class="body">
@@ -2227,6 +2421,7 @@ Image.network(
           <li><strong>Performance ビュー</strong><br><code>docs.flutter.dev/tools/devtools/performance</code></li>
           <li><strong>CPU Profiler</strong><br><code>docs.flutter.dev/tools/devtools/cpu-profiler</code></li>
           <li><strong>Memory ビュー</strong><br><code>docs.flutter.dev/tools/devtools/memory</code></li>
+          <li><strong>Network ビュー</strong><br><code>docs.flutter.dev/tools/devtools/network</code></li>
           <li><strong>パフォーマンスのベストプラクティス</strong><br><code>docs.flutter.dev/perf/best-practices</code></li>
           <li><strong>アプリサイズの計測</strong><br><code>docs.flutter.dev/perf/app-size</code></li>
         </ul>
@@ -2234,15 +2429,12 @@ Image.network(
       <div class="stack">
         <h2>この資料のリポジトリ</h2>
         <ul class="plain tight sm">
-          <li><code>slides/index.html</code> — このスライド</li>
+          <li><code>slides/index.html</code> — このスライド（日本語）</li>
+          <li><code>slides/en.html</code> — English version</li>
           <li><code>sample_app/</code> — デモアプリ</li>
           <li><code>sample_app/README.md</code> — 実演の手順と、端末に合わせた調整方法</li>
         </ul>
-        <div class="note bad">
-          <p class="sm"><strong>ブログ記事を読むときの注意</strong></p>
-          <p class="sm">パフォーマンス関連の記事は、Impeller 以前（Skia 時代）に書かれたものが大量に残っています。<code>--purge-persistent-cache</code> や SkSL の warm-up が出てきたら、その記事の前提は今と違います。</p>
-        </div>
-        <p class="sm dim">迷ったら、まず公式ドキュメントの日付を確認してください。</p>
+        <p class="sm dim">記事を探すときは、前のスライドの「古い記事のサイン」を先に見てください。</p>
       </div>
     </div>
   </div>
@@ -2258,6 +2450,7 @@ Image.network(
     <button type="button" id="btnGrid" title="スライド一覧 (g)">一覧</button>
     <button type="button" id="btnNotes" aria-pressed="false" title="発表者ノート (p)">ノート</button>
     <button type="button" id="btnTheme" title="配色を切り替える">配色</button>
+    <a class="hud-lang" id="btnLang" href="en.html" title="English version">EN</a>
     <button type="button" id="btnHelp" title="ショートカット (?)">?</button>
   </div>
 </nav>
@@ -2445,6 +2638,13 @@ Image.network(
     charts.forEach(function (c) { c.redraw(); });
   }
   document.getElementById('btnTheme').addEventListener('click', toggleTheme);
+  var btnLang = document.getElementById('btnLang');
+  if (btnLang) {
+    btnLang.addEventListener('click', function (e) {
+      e.preventDefault();
+      location.assign(btnLang.getAttribute('href') + location.hash);
+    });
+  }
 
   /* ---------- keyboard ---------- */
   document.addEventListener('keydown', function (e) {
